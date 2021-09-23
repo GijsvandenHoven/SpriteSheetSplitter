@@ -21,7 +21,7 @@ std::string& getOPT_STR() {
 }
 
 bool checkIsPNGDirectory(std::string& dir) {
-    return (0 == dir.compare(dir.size() - 4, 4, ".png"));
+    return dir.size() >= 4 && (0 == dir.compare(dir.size() - 4, 4, ".png"));
 }
 
 // SpriteSheetLoader.h is agnostic to workload; expecting only a sequence of jobs,
@@ -103,16 +103,18 @@ void parseCommandLine(int argc, char* argv[], option* long_options, std::vector<
     std::string& HELP_STRING = getHELP_STRING();
 
     SplitterOpts options;
-    if (argv[1][0] != '-') { // first parameter has no option flag. Interpret as in directory.
-        options.inDirectory = argv[1];
-        options.isPNGInDirectory = checkIsPNGDirectory(options.inDirectory);
-    }
 
     const char* OPT_STR = getOPT_STR().c_str();
     int c;
 
     while (EOF != (c = getopt_long(argc, argv, OPT_STR, long_options, nullptr))) {
         parseSingleParameter(c, options);
+    }
+
+    if (optind >= 0 && optind < argc) { // in parameter may be supplied raw instead of as option.
+        options.inDirectory = argv[optind];
+        std::cout << options.inDirectory << "\n";
+        options.isPNGInDirectory = checkIsPNGDirectory(options.inDirectory);
     }
 
     bool valid = validateOptions(options);
@@ -200,9 +202,8 @@ void parseSingleParameter(int c, SplitterOpts& options) {
         case '?':
         case ':':
         default:
-            std::cout << "Invalid input.\n";
-            std::cout << HELP_STRING;
-            exit(-1);
+            // ignore
+            break;
     }
 }
 

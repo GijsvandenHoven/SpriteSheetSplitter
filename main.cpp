@@ -2,6 +2,7 @@
 #include <getopt.h>
 #include <vector>
 #include "splitterOptions.h"
+#include "SplitterJobHandler.h"
 
 // https://linux.die.net/man/3/getopt
 extern char* optarg; // NOLINT(readability-redundant-declaration)
@@ -20,6 +21,8 @@ std::string& getOPT_STR() {
     return OPT_STR;
 }
 
+// This is more rigorously tested by the std::filesystem class further in execution.
+// All that matters for now, is if the user _intends_ to run it on a directory pointing to an alleged 'png'.
 bool checkIsPNGDirectory(std::string& dir) {
     return dir.size() >= 4 && (0 == dir.compare(dir.size() - 4, 4, ".png"));
 }
@@ -59,7 +62,8 @@ int main(int argc, char* argv[]) {
     }
 
     if (!jobs.empty()) {
-
+        SplitterJobHandler worker{};
+        worker.Work(jobs);
     }
 
     return 0;

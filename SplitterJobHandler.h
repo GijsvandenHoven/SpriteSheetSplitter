@@ -2,7 +2,7 @@
 #define SPRITESHEETSPLITTER_SPLITTERJOBHANDLER_H
 
 #include "splitterOptions.h"
-#include "IO/SpriteSheetLoader.h"
+#include "IO/SpriteSheetIO.h"
 
 class SplitterJobHandler {
 public:
@@ -10,8 +10,7 @@ public:
     void Work(std::vector<SplitterOpts>& jobs);
 
 private:
-    SpriteSheetLoader loader;
-    SpriteSheetLoader saver;
+    SpriteSheetIO ssio;
     // todo: Splitter class
 };
 

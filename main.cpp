@@ -27,7 +27,7 @@ bool checkIsPNGDirectory(std::string& dir) {
     return dir.size() >= 4 && (0 == dir.compare(dir.size() - 4, 4, ".png"));
 }
 
-// SpriteSheetLoader.h is agnostic to workload; expecting only a sequence of jobs,
+// SpriteSheetIO.h is agnostic to workload; expecting only a sequence of jobs,
 // hence even the single instance of SplitterOpts from parseCommandLine should be a vector.
 bool readConfig(int argc, char* argv[], option* long_options, std::vector<SplitterOpts>& work);
 void parseCommandLine(int argc, char* argv[], option* long_options, std::vector<SplitterOpts>& work);

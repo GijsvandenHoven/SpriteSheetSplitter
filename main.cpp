@@ -1,9 +1,12 @@
 #include <iostream>
 #include <getopt.h>
+#include <vector>
 #include "splitterOptions.h"
 
 // https://linux.die.net/man/3/getopt
 extern char* optarg; // NOLINT(readability-redundant-declaration)
+[[maybe_unused]] // it is modified in getopt.h. Silly compiler.
+extern int optind; // NOLINT(readability-redundant-declaration)
 
 // printed when the user gives illegal input
 std::string& getHELP_STRING() {
@@ -21,12 +24,15 @@ bool checkIsPNGDirectory(std::string& dir) {
     return (0 == dir.compare(dir.size() - 4, 4, ".png"));
 }
 
+// SpriteSheetLoader.h is agnostic to workload; expecting only a sequence of jobs,
+// hence even the single instance of SplitterOpts from parseCommandLine should be a vector.
+bool readConfig(int argc, char* argv[], option* long_options, std::vector<SplitterOpts>& work);
+void parseCommandLine(int argc, char* argv[], option* long_options, std::vector<SplitterOpts>& work);
+
+bool validateOptions(SplitterOpts& options);
 void parseSingleParameter(int c, SplitterOpts& options);
 
-// todo: handle when a file that is not png nor folder is specified.
 int main(int argc, char* argv[]) {
-
-    const char* OPT_STR = getOPT_STR().c_str();
     std::string& HELP_STRING = getHELP_STRING();
 
     static struct option long_options[] = {
@@ -46,43 +52,84 @@ int main(int argc, char* argv[]) {
         exit(-1);
     }
 
+    std::vector<SplitterOpts> jobs;
+    bool hasConfig = readConfig(argc, argv, long_options, jobs);
+    if (!hasConfig) {
+        parseCommandLine(argc, argv, long_options, jobs);
+    }
+
+    if (!jobs.empty()) {
+
+    }
+
+    return 0;
+}
+
+/**
+ * todo.
+ * @param argc
+ * @param argv
+ * @param long_options
+ * @param work
+ * @return if reading the config was successful.
+ */
+bool readConfig(int argc, char* argv[], option* long_options, std::vector<SplitterOpts> &work) {
+    // todo: foreach config entry create splitteropts, validate, and add to vector if valid.
+    const char* OPT_STR = getOPT_STR().c_str();
+    int c;
+    // check for config file specifically before parsing command line parameters
+    while (EOF != (c = getopt_long(argc, argv, OPT_STR, long_options, nullptr))) {
+        if (c == 'c') {
+            // todo: read config
+            std::cout << "configs are not supported yet.\n";
+
+            // todo: before returning, report on the total amount of dropped jobs (from validation failures).
+            return true;
+        }
+    }
+    optind = 1;
+
+    return false;
+}
+
+/**
+ *
+ * @param argc from main, amount of arguments in argv
+ * @param argv argument vector
+ * @param long_options existing long options (see get_long_opts)
+ * @param work output parameter to place finished SplitterOpts into.
+ */
+void parseCommandLine(int argc, char* argv[], option* long_options, std::vector<SplitterOpts>& work) {
+    std::string& HELP_STRING = getHELP_STRING();
+
     SplitterOpts options;
     if (argv[1][0] != '-') { // first parameter has no option flag. Interpret as in directory.
         options.inDirectory = argv[1];
         options.isPNGInDirectory = checkIsPNGDirectory(options.inDirectory);
     }
 
+    const char* OPT_STR = getOPT_STR().c_str();
     int c;
+
     while (EOF != (c = getopt_long(argc, argv, OPT_STR, long_options, nullptr))) {
         parseSingleParameter(c, options);
     }
 
-    if (options.inDirectory.empty()) {
-        std::cout << "[ERROR] No input directory specified.\n";
-        std::cout << HELP_STRING;
-        exit(-1);
+    bool valid = validateOptions(options);
+
+    if (valid) {
+        work.emplace_back(options);
     }
-
-    if (options.outDirectory.empty()) { // default to indirectory when not specified.
-        std::cout << "[WARNING] No output directory given, using input directory as output.\n";
-        options.outDirectory = options.inDirectory;
-    }
-
-    if (!options.isPNGInDirectory && options.workAmount == 0) {
-        std::cout << "[INFO] A folder (instead of a file) was given, but no -k specified. Defaulting to process the entire folder.\n";
-        options.workAmount = std::numeric_limits<int>::max();
-    }
-
-    if (options.isPNGInDirectory && options.workAmount > 0) {
-        std::cout << "[WARNING] a .png file was given as input, but -k was specified. -k only works for folders, and will be ignored.\n";
-        options.workAmount = 1; // only one file should be processed. Other routines should rely on isPNGDirectory instead of workamount for this case, but best be safe.
-    }
-
-    std::cout << "Your configuration:\n" << options;
-
-    return 0;
 }
 
+/**
+ * Handle a single input character specified by c. Typically extracts something to place into options.
+ * Also displays warnings of bad input, when detected.
+ *
+ * @param c the (short) name of the command.
+ * @param options struct to place any extracted parameters into.
+ */
+ //todo: with configs, optarg should not be used directly here (const char* instead, with the command line version passing optarg)
 void parseSingleParameter(int c, SplitterOpts& options) {
     std::string& HELP_STRING = getHELP_STRING();
     switch (c) {
@@ -124,10 +171,11 @@ void parseSingleParameter(int c, SplitterOpts& options) {
             }
             break;
         }
-        case 'c': {
-            std::cout << "-c is not supported yet!\n";
-            break;
-        }
+            /* --config is checked before the parsing of this section; because existence of a config overrides all command line parameters.
+            case 'c': {
+                break;
+            }
+            */
         case 'r':
             options.recursive = true;
             break;
@@ -158,6 +206,40 @@ void parseSingleParameter(int c, SplitterOpts& options) {
     }
 }
 
+/**
+ * check SplitterOpts struct for any irregularities,
+ * invoke defaults, inform the user of changes to the struct (their input!),
+ * remove if illegal input.
+ *
+ * @param options the SplitterOpts to evaluate
+ * @return whether or not the SplitterOpts are correctly formed
+ */
+bool validateOptions(SplitterOpts& options) {
+    std::string& HELP_STRING = getHELP_STRING();
+
+    if (options.inDirectory.empty()) {
+        std::cout << "[ERROR] No input directory specified.\n";
+        std::cout << HELP_STRING;
+        return false;
+    }
+
+    if (options.outDirectory.empty()) { // default to indirectory when not specified.
+        std::cout << "[WARNING] No output directory given, using input directory as output.\n";
+        options.outDirectory = options.inDirectory;
+    }
+
+    if (!options.isPNGInDirectory && options.workAmount == 0) {
+        std::cout << "[INFO] A folder (instead of a file) was given, but no -k specified. Defaulting to process the entire folder.\n";
+        options.workAmount = std::numeric_limits<int>::max();
+    }
+
+    if (options.isPNGInDirectory && options.workAmount > 0) {
+        std::cout << "[WARNING] a .png file was given as input, but -k was specified. -k only works for folders, and will be ignored.\n";
+        options.workAmount = 1; // just in case.
+    }
+
+    return true;
+}
 
 // possible options:
 // (no flag provided, just a text on argv[1]): check if `.png`. Then use as --directory or --in depending on result.

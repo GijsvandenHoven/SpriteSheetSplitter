@@ -1,5 +1,6 @@
 #include <iostream>
 #include "SpriteSheetIO.h"
+#include "lodepng.h"
 
 void SpriteSheetIO::setNewPath(std::string& pathName) {
     // todo: look into c++20 feature utf8 for properly loading _any_ file. Is this sufficient?

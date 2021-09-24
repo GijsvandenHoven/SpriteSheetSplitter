@@ -8,7 +8,7 @@ void SpriteSheetIO::setNewPath(std::string& pathName) {
 }
 
 // using lodepng, and the current file path, obtain decoded png file as byte buffer.
-char *SpriteSheetIO::getNextFile() {
+std::vector<unsigned char>* SpriteSheetIO::getNextFile() {
     return nullptr;
 }
 

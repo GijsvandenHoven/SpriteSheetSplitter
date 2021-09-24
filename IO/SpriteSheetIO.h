@@ -9,7 +9,7 @@ class SpriteSheetIO {
 public:
     SpriteSheetIO() = default;
     void setNewPath(std::string& pathName);
-    char* getNextFile();
+    std::vector<unsigned char> * getNextFile();
 
 private:
     path currentFilePath_;

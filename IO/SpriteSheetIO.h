@@ -21,9 +21,9 @@ private:
     fs::path inFilePath_;
     fs::path outFilePath_;
 
-    lodepng::State* lodePNGState = nullptr;
-
     ignorant_directory_iterator* directoryIterator = nullptr;
+
+
 };
 
 /**
@@ -32,9 +32,13 @@ private:
  */
 class ignorant_directory_iterator {
 public:
-    virtual const fs::path& get() = 0;
+    virtual const fs::path& operator*() = 0;
+    virtual const fs::path* operator->() = 0;
+    virtual ignorant_directory_iterator& operator++() = 0;
     virtual bool end() = 0;
-    virtual void next() = 0;
+    // aliases for the operator overloads
+    [[maybe_unused]] virtual const fs::path& get() = 0;
+    [[maybe_unused]] virtual void next() = 0;
     virtual ~ignorant_directory_iterator() = default;
 };
 
@@ -43,9 +47,12 @@ class directory_iterator : public ignorant_directory_iterator {
 public:
     directory_iterator() = delete;
     explicit directory_iterator(fs::directory_iterator* di) : iterator(di) {};
-    const fs::path& get() final { return (*iterator)->path(); }
+    const fs::path& operator*() final { return (*iterator)->path(); }
+    const fs::path* operator->() final { return &((*iterator)->path()); }
+    directory_iterator& operator++() final { ++(*iterator); return *this; }
     bool end() final { return *iterator == fs::end(*iterator); }
-    void next() final { (*iterator)++; }
+    const fs::path& get() final { return (*iterator)->path(); }
+    void next() final { ++(*iterator); }
     ~directory_iterator() override { delete iterator; }
 };
 
@@ -54,11 +61,13 @@ class recursive_directory_iterator : public ignorant_directory_iterator {
 public:
     recursive_directory_iterator() = delete;
     explicit recursive_directory_iterator(fs::recursive_directory_iterator* rdi) : iterator(rdi) {};
-    const fs::path& get() final { return (*iterator)->path(); }
+    const fs::path& operator*() final { return (*iterator)->path(); }
+    const fs::path* operator->() final { return &((*iterator)->path()); }
+    recursive_directory_iterator& operator++() final { ++(*iterator); return *this; }
     bool end() final { return *iterator == fs::end(*iterator); }
-    void next() final { (*iterator)++; }
+    const fs::path& get() final { return (*iterator)->path(); }
+    void next() final { ++(*iterator); }
     ~recursive_directory_iterator() override { delete iterator; }
 };
-
 
 #endif //SPRITESHEETSPLITTER_SPRITESHEETIO_H

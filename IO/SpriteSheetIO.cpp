@@ -64,9 +64,9 @@ bool SpriteSheetIO::findNextPNG() {
     if (directoryIterator == nullptr) return true; // no directory iterator was set, so input path itself is already pointing at a PNG.
 
     while (! directoryIterator->end()) {
-        auto& dir = directoryIterator->get();
+        auto& dir = **directoryIterator;
         if (dir.extension() == ".png") return true;
-        directoryIterator->next();
+        ++*directoryIterator;
     }
     // no more pngs.
     return false;
@@ -91,16 +91,16 @@ unsigned int SpriteSheetIO::load(std::vector<unsigned char>& buffer) {
     if (directoryIterator == nullptr) {
         fileName = inFilePath_.string();
     } else {
-        fileName = directoryIterator->get().string();
+        fileName = (*directoryIterator)->string();
         // also advance the iterator, loading effectively consumes the file.
-        directoryIterator->next();
+        ++*directoryIterator;
     }
 
     // todo savestate
     std::vector<unsigned char> encodedPixelBuffer;
     unsigned int error;
-    unsigned int width;
-    unsigned int height;
+    unsigned int width = 0;
+    unsigned int height = 0;
     error = lodepng::load_file(encodedPixelBuffer, fileName);
     if (!error) error = lodepng::decode(buffer, width, height, encodedPixelBuffer);
 

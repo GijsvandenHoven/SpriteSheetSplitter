@@ -80,13 +80,13 @@ bool SpriteSheetIO::hasNextPNG() {
  * Using the LodePNG Library, attempts to decode the current inPath as PNG.
  * The current inPath is the directoryIterator (if any), or the inFilePath string.
  *
- * Calling this function writes the LodePNG::State to TODO member variable,
+ * Calling this function writes the results of encoding to pngState, which contains lodepng::State plus other png information.
  * so that the correct encoding method is preserved for the split sprites.
  *
  * @param buffer vector to-be-filled with the raw pixels of the PNG
  * @return error code from lodePNG (0 = OK)
  */
-unsigned int SpriteSheetIO::load(std::vector<unsigned char>& buffer) {
+unsigned int SpriteSheetIO::load(std::vector<unsigned char>& buffer, unsigned int& width, unsigned int& height) {
     std::string fileName;
     if (directoryIterator == nullptr) {
         fileName = inFilePath_.string();
@@ -96,15 +96,14 @@ unsigned int SpriteSheetIO::load(std::vector<unsigned char>& buffer) {
         ++*directoryIterator;
     }
 
-    // todo savestate
-    std::vector<unsigned char> encodedPixelBuffer;
-    unsigned int error;
-    unsigned int width = 0;
-    unsigned int height = 0;
+    std::cout << "[INFO] Loading " << fileName << "\n";
+
+    unsigned int& error = pngState.error;
+    auto& encodedPixelBuffer = pngState.encodedPixelBuffer;
     error = lodepng::load_file(encodedPixelBuffer, fileName);
-    if (!error) error = lodepng::decode(buffer, width, height, encodedPixelBuffer);
+    if (!error) error = lodepng::decode(buffer, pngState.width, pngState.height, pngState.lodeState, encodedPixelBuffer);
 
-    std::cout << "loaded image with " << width << ", " << height << "\n";
-
+    width = pngState.width;
+    height = pngState.height;
     return error;
 }

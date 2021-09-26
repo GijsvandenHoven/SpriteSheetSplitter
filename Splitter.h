@@ -12,6 +12,14 @@ public:
 
 private:
     SpriteSheetIO ssio;
+    static bool validSpriteSheet(unsigned int width, unsigned int height, unsigned int columnCount);
+    bool splitObjectSheet(std::vector<unsigned char>& img, unsigned int spriteSize);
+    bool splitCharSheet(std::vector<unsigned char>& img, unsigned int spriteSize);
+
+    enum SpriteSheetType {
+        OBJECT = 0,
+        CHARACTER = 1,
+    };
 };
 
 

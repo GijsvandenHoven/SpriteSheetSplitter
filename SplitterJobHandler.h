@@ -7,7 +7,7 @@
 class SplitterJobHandler {
 public:
     SplitterJobHandler() = default;
-    void Work(std::vector<SplitterOpts>& jobs);
+    void work(std::vector<SplitterOpts>& jobs);
 
 private:
     SpriteSheetIO ssio;

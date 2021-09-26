@@ -2,6 +2,7 @@
 #define SPRITESHEETSPLITTER_SPRITESHEETIO_H
 
 #include <filesystem>
+#include "lodepng.h"
 
 namespace fs = std::filesystem;
 
@@ -12,11 +13,15 @@ public:
     SpriteSheetIO() = default;
     bool setInPath(std::string& pathName, bool shouldBePNG, bool recursive);
     bool setOutPath(std::string& pathName);
-    unsigned int load(std::vector<unsigned char> &buffer) const;
+    bool findNextPNG();
+    bool hasNextPNG();
+    unsigned int load(std::vector<unsigned char> &buffer);
 
 private:
     fs::path inFilePath_;
     fs::path outFilePath_;
+
+    lodepng::State* lodePNGState = nullptr;
 
     ignorant_directory_iterator* directoryIterator = nullptr;
 };
@@ -27,7 +32,7 @@ private:
  */
 class ignorant_directory_iterator {
 public:
-    virtual const fs::directory_entry& get() = 0;
+    virtual const fs::path& get() = 0;
     virtual bool end() = 0;
     virtual void next() = 0;
     virtual ~ignorant_directory_iterator() = default;
@@ -38,7 +43,7 @@ class directory_iterator : public ignorant_directory_iterator {
 public:
     directory_iterator() = delete;
     explicit directory_iterator(fs::directory_iterator* di) : iterator(di) {};
-    const fs::directory_entry& get() final { return **iterator; }
+    const fs::path& get() final { return (*iterator)->path(); }
     bool end() final { return *iterator == fs::end(*iterator); }
     void next() final { (*iterator)++; }
     ~directory_iterator() override { delete iterator; }
@@ -49,7 +54,7 @@ class recursive_directory_iterator : public ignorant_directory_iterator {
 public:
     recursive_directory_iterator() = delete;
     explicit recursive_directory_iterator(fs::recursive_directory_iterator* rdi) : iterator(rdi) {};
-    const fs::directory_entry& get() final { return **iterator; }
+    const fs::path& get() final { return (*iterator)->path(); }
     bool end() final { return *iterator == fs::end(*iterator); }
     void next() final { (*iterator)++; }
     ~recursive_directory_iterator() override { delete iterator; }

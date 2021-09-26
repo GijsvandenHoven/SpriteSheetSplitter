@@ -2,7 +2,7 @@
 #include <getopt.h>
 #include <vector>
 #include "splitterOptions.h"
-#include "SplitterJobHandler.h"
+#include "Splitter.h"
 
 // https://linux.die.net/man/3/getopt
 extern char* optarg; // NOLINT(readability-redundant-declaration)
@@ -62,7 +62,7 @@ int main(int argc, char* argv[]) {
     }
 
     if (!jobs.empty()) {
-        SplitterJobHandler worker{};
+        Splitter worker{};
         worker.work(jobs);
     }
 
@@ -240,7 +240,7 @@ bool validateOptions(SplitterOpts& options) {
 
     if (options.isPNGInDirectory && options.workAmount > 0) {
         std::cout << "[WARNING] a .png file was given as input, but -k was specified. -k only works for folders, and will be ignored.\n";
-        options.workAmount = 1; // just in case.
+        options.workAmount = 1; // just in case
     }
 
     return true;

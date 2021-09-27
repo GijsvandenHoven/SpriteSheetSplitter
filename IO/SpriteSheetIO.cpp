@@ -3,8 +3,8 @@
 
 bool SpriteSheetIO::setInPath(std::string& pathName, bool shouldBePNG, bool recursive) {
 
-    delete directoryIterator;
-    directoryIterator = nullptr;
+    delete directoryIterator_;
+    directoryIterator_ = nullptr;
     // a note about using non-UTF8 strings as path name. This means technically not all path names are supported, but lodePNG (the png library this uses) does not support this either. There are ways around that (obtain the encoded png bytes externally), but that is only worth doing if the need ever arises.
     inFilePath_ = fs::path(pathName).make_preferred();
 
@@ -22,10 +22,10 @@ bool SpriteSheetIO::setInPath(std::string& pathName, bool shouldBePNG, bool recu
     if (fs::is_directory(inFilePath_)) {
         if (recursive) {
             auto *iterator = new fs::recursive_directory_iterator(inFilePath_);
-            directoryIterator = new recursive_directory_iterator(iterator);
+            directoryIterator_ = new recursive_directory_iterator(iterator);
         } else {
             auto *iterator = new fs::directory_iterator(inFilePath_);
-            directoryIterator = new directory_iterator(iterator);
+            directoryIterator_ = new directory_iterator(iterator);
         }
     }
 
@@ -53,57 +53,63 @@ bool SpriteSheetIO::setOutPath(std::string &pathName) {
 }
 
 /**
- * Advances the directoryIterator until it points to a PNG.
- * When no directoryIterator exists, then true is returned because the inFile must be pointing to a png, so it was found.
+ * Advances the directoryIterator_ until it points to a PNG.
+ * When no directoryIterator_ exists, then true is returned because the inFile must be pointing to a png, so it was found.
  *
  * Note that this iterator first looks at itself, so repeated calls to just findNext would result in an infinite loop.
+ * Use consumeFile() to advance the iterator by one.
  *
  * @return whether or not another PNG could be found.
  */
-bool SpriteSheetIO::findNextPNG() {
-    if (directoryIterator == nullptr) return true; // no directory iterator was set, so input path itself is already pointing at a PNG.
+bool SpriteSheetIO::findPNG() {
+    if (directoryIterator_ == nullptr) return true; // no directory iterator was set, so input path itself is already pointing at a PNG.
 
-    while (! directoryIterator->end()) {
-        auto& dir = **directoryIterator;
+    while (! directoryIterator_->end()) {
+        auto& dir = **directoryIterator_;
         if (dir.extension() == ".png") return true;
-        ++*directoryIterator;
+        ++*directoryIterator_;
     }
     // no more pngs.
     return false;
 }
 
-bool SpriteSheetIO::hasNextPNG() {
-    return ! (directoryIterator == nullptr || directoryIterator->end());
+void SpriteSheetIO::consumeFile() {
+    if (directoryIterator_ == nullptr || directoryIterator_->end()) return;
+
+    ++*directoryIterator_;
+}
+
+bool SpriteSheetIO::hasUncheckedFiles() {
+    return ! (directoryIterator_ == nullptr || directoryIterator_->end());
+}
+
+std::string SpriteSheetIO::pathName() {
+    if (directoryIterator_ == nullptr) {
+        return inFilePath_.string();
+    } else {
+        return (*directoryIterator_)->string();
+    }
 }
 
 /**
- * Using the LodePNG Library, attempts to decode the current inPath as PNG.
- * The current inPath is the directoryIterator (if any), or the inFilePath string.
+ * Using the LodePNG Library, attempts to decode the fileName as PNG.
  *
- * Calling this function writes the results of encoding to pngState, which contains lodepng::State plus other png information.
- * so that the correct encoding method is preserved for the split sprites.
- *
- * @param buffer vector to-be-filled with the raw pixels of the PNG
+ * @param fileName path to the PNG.
+ * @param buffer Vector to-be-filled with the raw pixels of the PNG
+ * @param data struct containing metadata from the spritesheet, like dimensions and lodepng decode state.
  * @return error code from lodePNG (0 = OK)
  */
-unsigned int SpriteSheetIO::load(std::vector<unsigned char>& buffer, unsigned int& width, unsigned int& height) {
-    std::string fileName;
-    if (directoryIterator == nullptr) {
-        fileName = inFilePath_.string();
-    } else {
-        fileName = (*directoryIterator)->string();
-        // also advance the iterator, loading effectively consumes the file.
-        ++*directoryIterator;
-    }
-
+unsigned int SpriteSheetIO::loadPNG(const std::string& fileName, std::vector<unsigned char> &buffer, SpriteSheetData& data) {
     std::cout << "[INFO] Loading " << fileName << "\n";
+    unsigned int& error = data.error;
+    std::vector<unsigned char> encodedPixelBuffer;
 
-    unsigned int& error = pngState.error;
-    auto& encodedPixelBuffer = pngState.encodedPixelBuffer;
     error = lodepng::load_file(encodedPixelBuffer, fileName);
-    if (!error) error = lodepng::decode(buffer, pngState.width, pngState.height, pngState.lodeState, encodedPixelBuffer);
+    if (!error) error = lodepng::decode(buffer, data.width, data.height, data.lodeState, encodedPixelBuffer);
 
-    width = pngState.width;
-    height = pngState.height;
     return error;
+}
+
+SpriteSheetIO::~SpriteSheetIO() {
+    delete directoryIterator_;
 }

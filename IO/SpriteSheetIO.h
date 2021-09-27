@@ -3,6 +3,7 @@
 
 #include <filesystem>
 #include "lodepng.h"
+#include "../SpriteSheetData.h"
 
 namespace fs = std::filesystem;
 
@@ -11,39 +12,19 @@ class ignorant_directory_iterator;
 class SpriteSheetIO {
 public:
     SpriteSheetIO() = default;
+    ~SpriteSheetIO();
     bool setInPath(std::string& pathName, bool shouldBePNG, bool recursive);
     bool setOutPath(std::string& pathName);
-    bool findNextPNG();
-    bool hasNextPNG();
-    unsigned int load(std::vector<unsigned char> &buffer, unsigned int& width, unsigned int& height);
+    bool findPNG();
+    void consumeFile();
+    std::string pathName(); // cannot be const reference, path.string() is temporary object.
+    bool hasUncheckedFiles();
+    static unsigned int loadPNG(const std::string& fileName, std::vector<unsigned char> &buffer, SpriteSheetData& data);
 
 private:
     fs::path inFilePath_;
     fs::path outFilePath_;
-
-    ignorant_directory_iterator* directoryIterator = nullptr;
-
-    struct pngState {
-        // todo: must it remember width and height? saving doesnt use this, it uses sprite size.
-        unsigned int width;
-        unsigned int height;
-        unsigned int error;
-        lodepng::State lodeState;
-        std::vector<unsigned char> encodedPixelBuffer;
-
-        pngState(){
-            // lodepng settings to encode images with the exact same settings as the source image.
-            // I have only an elementary grasp on what these settings do.
-            // Taken 1:1 from lodeng/examples/example_reencode.cpp
-            lodeState.decoder.color_convert = 0;
-            lodeState.decoder.remember_unknown_chunks = 1; //make it reproduce even unknown chunks in the saved image
-            lodeState.encoder.text_compression = 1;
-            // to satiate the compiler warnings. Empirically lodepng::decode will always set these.
-            width = 0;
-            height = 0;
-            error = 0;
-        }
-    } pngState;
+    ignorant_directory_iterator* directoryIterator_ = nullptr;
 };
 
 /**

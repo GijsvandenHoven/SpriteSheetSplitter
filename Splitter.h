@@ -8,12 +8,12 @@ class Splitter {
 public:
     Splitter() = default;
     void work(std::vector<SplitterOpts>& jobs);
-    static bool split(const std::string& fileName, std::basic_ostream<char>&);
 
 private:
     SpriteSheetIO ssio;
 
-    int workFolder(int workCap);
+    static int workFolder(int workCap, std::queue<std::string>& pngFileNames);
+    static bool split(const std::string& fileName, std::basic_ostream<char>&);
     static bool validSpriteSheet(unsigned int width, unsigned int height, unsigned int columnCount);
     bool splitObjectSheet(std::vector<unsigned char>& img, unsigned int spriteSize);
     bool splitCharSheet(std::vector<unsigned char>& img, unsigned int spriteSize);

@@ -53,42 +53,25 @@ bool SpriteSheetIO::setOutPath(std::string &pathName) {
 }
 
 /**
- * Advances the directoryIterator_ until it points to a PNG.
- * When no directoryIterator_ exists, then true is returned because the inFile must be pointing to a png, so it was found.
+ * Creates a queue of all png files in the directory/directories represented by directoryIterator.
+ * When directoryIterator is nullptr, uses only the InfilePath instead (e.g. when infile is a .png itself)
  *
- * Note that this iterator first looks at itself, so repeated calls to just findNext would result in an infinite loop.
- * Use consumeFile() to advance the iterator by one.
- *
- * @return whether or not another PNG could be found.
+ * @param q the queue to fill
+ * @return the queue, filled with png filePaths.
  */
-bool SpriteSheetIO::findPNG() {
-    if (directoryIterator_ == nullptr) return true; // no directory iterator was set, so input path itself is already pointing at a PNG.
-
-    while (! directoryIterator_->end()) {
-        auto& dir = **directoryIterator_;
-        if (dir.extension() == ".png") return true;
-        ++*directoryIterator_;
-    }
-    // no more pngs.
-    return false;
-}
-
-void SpriteSheetIO::consumeFile() {
-    if (directoryIterator_ == nullptr || directoryIterator_->end()) return;
-
-    ++*directoryIterator_;
-}
-
-bool SpriteSheetIO::hasUncheckedFiles() {
-    return ! (directoryIterator_ == nullptr || directoryIterator_->end());
-}
-
-std::string SpriteSheetIO::pathName() {
+std::queue<std::string> &SpriteSheetIO::getPNGQueue(std::queue<std::string> &q) {
     if (directoryIterator_ == nullptr) {
-        return inFilePath_.string();
+        q.emplace(std::move(inFilePath_.string()));
     } else {
-        return (*directoryIterator_)->string();
+        for (auto& dirIter = *directoryIterator_ ; ! dirIter.end() ; ++dirIter) {
+            auto& dir = *dirIter;
+            if (dir.extension() == ".png") {
+                q.emplace(std::move(dirIter->string()));
+            }
+        }
     }
+
+    return q;
 }
 
 /**

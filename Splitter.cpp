@@ -14,25 +14,29 @@ void Splitter::work(std::vector <SplitterOpts> &jobs) {
         // only work the job if the input is OK. The only input error that can happen from now on is a png decode error or malformed spritesheet.
         if (! (inPathOK && outPathOK)) continue;
 
+        std::queue<std::string> pngQueue;
+        ssio.getPNGQueue(pngQueue);
+
         if (job.isPNGInDirectory) {
-            completedCount += split(ssio.pathName(), std::cout);
+            std::string& onlyFile = pngQueue.front();
+            completedCount += split(onlyFile, std::cout);
+            pngQueue.pop();
         } else {
-            workFolder(job.workAmount);
+            workFolder(job.workAmount, pngQueue);
         }
     }
 }
 
-int Splitter::workFolder(int workCap) {
-    while (workCap-- > 0 && ssio.hasUncheckedFiles()) {
-        if (ssio.findPNG()) {
-            // found png, get path name, advance internal file iterator for next png search.
-            std::string fileName = ssio.pathName();
-            ssio.consumeFile();
-            // for printing without any data races.
-            std::osyncstream synced_out(std::cout);
+int Splitter::workFolder(int workCap, std::queue<std::string>& pngs) {
+    while (workCap-- > 0 && ! pngs.empty()) {
+        std::string& file = pngs.front();
+        // for printing without data races
+        std::osyncstream synced_out(std::cout);
+        // todo: threading goes here
+        split(file, synced_out);
 
-            // todo: thread
-        }
+        // remove from queue after being done with the string
+        pngs.pop();
     }
 
     return 0;
@@ -59,12 +63,12 @@ bool Splitter::split(const std::string &fileName, std::basic_ostream<char>& out)
     SpriteSheetType type;
     if (validSpriteSheet(ssd.width, ssd.height, 16)) {
         type = SpriteSheetType::OBJECT;
-        std::cout << "object sheet\n";
+        std::cout << "Detected as Object sheet.\n";
     } else if (validSpriteSheet(ssd.width, ssd.height, 7)) {
         type = SpriteSheetType::CHARACTER;
-        std::cout << "char sheet\n";
+        std::cout << "Detected as Char sheet\n";
     } else {
-        std::cout << "[ERROR] An image of size " << ssd.width << ", " << ssd.height << " is not a valid SpriteSheetData.\n";
+        std::cout << "[ERROR] An image of size " << ssd.width << ", " << ssd.height << " is not a valid SpriteSheet.\n";
         return false;
     }
 
@@ -75,7 +79,7 @@ bool Splitter::split(const std::string &fileName, std::basic_ostream<char>& out)
             return true;
     }
 
-    // did you add a SpriteSheetType without handling in type?
+    // did you add a SpriteSheetType without handling in type switch?
     return false;
 }
 
@@ -90,7 +94,7 @@ bool Splitter::split(const std::string &fileName, std::basic_ostream<char>& out)
  * @return whether or not it is a valid SpriteSheetData.
  */
 bool Splitter::validSpriteSheet(unsigned int width, unsigned int height, unsigned int columnCount) {
-    // 16 equally sized columns?
+    // equally sized columns?
     float columnSize = static_cast<float>(width) / static_cast<float>(columnCount);
     if (columnSize != static_cast<float>(static_cast<int>(columnSize))) {
         return false;

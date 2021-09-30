@@ -2,6 +2,7 @@
 #define SPRITESHEETSPLITTER_SPRITESHEETIO_H
 
 #include <filesystem>
+#include <queue>
 #include "lodepng.h"
 #include "../SpriteSheetData.h"
 
@@ -15,10 +16,7 @@ public:
     ~SpriteSheetIO();
     bool setInPath(std::string& pathName, bool shouldBePNG, bool recursive);
     bool setOutPath(std::string& pathName);
-    bool findPNG();
-    void consumeFile();
-    std::string pathName(); // cannot be const reference, path.string() is temporary object.
-    bool hasUncheckedFiles();
+    std::queue<std::string>& getPNGQueue(std::queue<std::string>& q);
     static unsigned int loadPNG(const std::string& fileName, std::vector<unsigned char> &buffer, SpriteSheetData& data);
 
 private:

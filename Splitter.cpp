@@ -39,6 +39,8 @@ int Splitter::workFolder(int workCap, std::queue<std::string>& pngs) {
         pngs.pop();
     }
 
+    // wait for all threads to end.
+
     return 0;
 }
 
@@ -46,42 +48,94 @@ int Splitter::workFolder(int workCap, std::queue<std::string>& pngs) {
  *
  * @param imgBuffer A buffer to hold the image. This is first cleared when the function is called.
  *                  It is not created within the function to prevent re-allocating memory lots of times.
- * @param out stream for printing characters. Normally std::cout, but could be std::osyncstream from threading.
+ * @param outStream stream for printing characters. Normally std::cout, but could be std::osyncstream from threading.
  * @return whether the image was successfully split
  */
-bool Splitter::split(const std::string &fileName, std::basic_ostream<char>& out) {
+bool Splitter::split(const std::string &fileName, std::basic_ostream<char>& outStream) {
     std::vector<unsigned char> img;
     SpriteSheetData ssd;
 
     SpriteSheetIO::loadPNG(fileName, img, ssd);
 
     if (ssd.error) {
-        std::cout << "[ERROR] LodePNG decode error: " << ssd.error << ". (Most likely a corrupt png)\n"; // if it's an incorrect path at this point then that is a bug!
+        outStream << "[ERROR] LodePNG decode error: " << ssd.error << ". (Most likely a corrupt png)\n"; // if it's an incorrect path at this point then that is a bug!
         return false;
     }
 
     SpriteSheetType type;
-    if (validSpriteSheet(ssd.width, ssd.height, 16)) {
+    if (validSpriteSheet(ssd.width, ssd.height, OBJ_SHEET_ROW)) {
         type = SpriteSheetType::OBJECT;
-        std::cout << "Detected as Object sheet.\n";
-    } else if (validSpriteSheet(ssd.width, ssd.height, 7)) {
+        outStream << "Detected as Object sheet.\n";
+    } else if (validSpriteSheet(ssd.width, ssd.height, CHAR_SHEET_ROW)) {
         type = SpriteSheetType::CHARACTER;
-        std::cout << "Detected as Char sheet\n";
+        outStream << "Detected as Char sheet\n";
     } else {
-        std::cout << "[ERROR] An image of size " << ssd.width << ", " << ssd.height << " is not a valid SpriteSheet.\n";
+        outStream << "[ERROR] An image of size " << ssd.width << ", " << ssd.height << " is not a valid SpriteSheet.\n";
         return false;
     }
 
+    unsigned int spriteSize; // size of a sprite (8, 16, 32..)
+    unsigned int spriteCount; // amount of unsigned char* to expect back from splitting.
+    unsigned char** spriteData; // array of SpriteSheet row indices, filled by upcoming split function.
+    bool saveSuccess;
     switch(type) {
         case SpriteSheetType::OBJECT:
-            return true;
+            spriteSize = ssd.width / OBJ_SHEET_ROW;
+            spriteCount = (img.size() / 4) / (spriteSize * spriteSize);
+            spriteData = new unsigned char* [spriteSize * spriteCount]; // rows per sprite * amount of sprites
+
+            splitObjectSheet(img.data(), spriteSize, spriteCount, spriteData);
+
+            saveSuccess = ssio.saveObjectSplits(spriteData, spriteSize, spriteCount, ssd.lodeState, fileName);
+            break;
         case SpriteSheetType::CHARACTER:
-            return true;
+            spriteSize = ssd.width / CHAR_SHEET_ROW;
+            spriteData = nullptr;
+            //splitCharSheet(img, spriteSize, spriteCount);
+            //break;
+            return false; // todo
+        default: // did you add a new type to the enum?
+            std::cout << "[ERROR] unknown SpriteSheetType" << type << "\n";
+            exit(-1);
     }
 
-    // did you add a SpriteSheetType without handling in type switch?
-    return false;
+    delete[] spriteData;
+    spriteData = nullptr;
+
+    // todo
+    return saveSuccess;
 }
+
+void Splitter::splitObjectSheet(unsigned char* imgData, unsigned int spriteSize, unsigned int spriteCount, unsigned char** out) {
+    // 16 rows, 4 uchar per pixel.
+    unsigned int sheetPixelWidth = spriteSize * OBJ_SHEET_ROW * 4;
+    // todo: (auto) vectorization? openMP go brr?
+    for (int i = 0; i < spriteCount; ++i) {
+        for (int j = 0; j < spriteSize; ++j) {
+            //    (linear index)    =           (sprite row offset)                   + (sprite column offset)  + (pixel row offset)
+            out[i * spriteSize + j] = imgData + (i/16) * spriteSize * sheetPixelWidth + (i%16) * spriteSize * 4 + j * sheetPixelWidth;
+        }
+    }
+}
+
+void Splitter::splitCharSheet(std::vector<unsigned char>& img, unsigned int spriteSize, std::vector<unsigned char**>& out) {
+    /* Char sheets are special. They consist of seven columns, where each row belongs to a single char.
+     * Column 0 is their idle frame.
+     * Column 1 and 2 are their walking frames.
+     * Column 3 is always empty. (Mightve been intended for a fancy walk frame. Never happened.)
+     * Column 4 and (5+6) are attack frames.
+     * Column 5 and 6 are joined as one sprite for i.e. an extended arm holding a sword.
+     * Meaning all sprites here are square except for the 5th, it is a size x 2size rectangle!
+     */
+    int rowIndex = 0;
+    auto sprite = new unsigned char*[spriteSize];
+    unsigned char* imgData = img.data();
+    // divide (bytes per pixel) (sprite height) (sprite width). THEN correct for 2 fewer sprites per row. (3 empty, 5+6 joined)
+    unsigned int spriteCount = ((img.size() / 4) / spriteSize) / spriteSize;
+    spriteCount = (spriteCount / CHAR_SHEET_ROW) * (CHAR_SHEET_ROW - 2);
+    std::cout << "DEBUG: # sprites on this sheet: " << spriteCount << "\n";
+}
+
 
 /**
  * tests if the given image dimensions are that of a correctly formed SpriteSheetData.
@@ -111,12 +165,4 @@ bool Splitter::validSpriteSheet(unsigned int width, unsigned int height, unsigne
     }
 
     return true;
-}
-
-bool Splitter::splitObjectSheet(std::vector<unsigned char> &img, unsigned int spriteSize) {
-    return false;
-}
-
-bool Splitter::splitCharSheet(std::vector<unsigned char> &img, unsigned int spriteSize) {
-    return false;
 }

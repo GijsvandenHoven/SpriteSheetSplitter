@@ -4,7 +4,8 @@
 #include <filesystem>
 #include <queue>
 #include "lodepng.h"
-#include "../SpriteSheetData.h"
+#include "../util/SpriteSheetData.h"
+#include "../Util/SpriteSheetType.h"
 
 namespace fs = std::filesystem;
 
@@ -14,15 +15,19 @@ class SpriteSheetIO {
 public:
     SpriteSheetIO() = default;
     ~SpriteSheetIO();
-    bool setInPath(std::string& pathName, bool shouldBePNG, bool recursive);
-    bool setOutPath(std::string& pathName);
-    std::queue<std::string>& getPNGQueue(std::queue<std::string>& q);
+    bool setInPath(const std::string& pathName, bool shouldBePNG, bool recursive);
+    bool setOutPath(const std::string& pathName);
+    void getPNGQueue(std::queue<std::string>& q);
     static unsigned int loadPNG(const std::string& fileName, std::vector<unsigned char> &buffer, SpriteSheetData& data);
+    bool saveObjectSplits(unsigned char** data, unsigned int spriteSize, unsigned int spriteCount, lodepng::State& lodeState, const std::string& originalFileName);
+
 
 private:
     fs::path inFilePath_;
     fs::path outFilePath_;
     ignorant_directory_iterator* directoryIterator_ = nullptr;
+    bool saveSprite(unsigned char* sprite, int index, unsigned int spriteSize, lodepng::State& lodeState, const std::string& folderName);
+    static std::string folderNameFromSheetName(const std::string& sheet, const SpriteSheetType& type);
 };
 
 /**

@@ -5,6 +5,6 @@ set(CMAKE_CXX_STANDARD 20)
 
 add_subdirectory(lodepng)
 
-add_executable(SpriteSheetSplitter main.cpp splitterOptions.h IO/SpriteSheetIO.cpp IO/SpriteSheetIO.h Splitter.cpp Splitter.h SpriteSheetData.h)
+add_executable(SpriteSheetSplitter main.cpp util/splitterOptions.h IO/SpriteSheetIO.cpp IO/SpriteSheetIO.h Splitter.cpp Splitter.h util/SpriteSheetData.h util/SpriteSheetType.h)
 
 target_link_libraries(SpriteSheetSplitter PRIVATE lodepng)

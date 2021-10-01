@@ -1,7 +1,7 @@
 #include <iostream>
 #include "SpriteSheetIO.h"
 
-bool SpriteSheetIO::setInPath(std::string& pathName, bool shouldBePNG, bool recursive) {
+bool SpriteSheetIO::setInPath(const std::string& pathName, bool shouldBePNG, bool recursive) {
 
     delete directoryIterator_;
     directoryIterator_ = nullptr;
@@ -32,7 +32,7 @@ bool SpriteSheetIO::setInPath(std::string& pathName, bool shouldBePNG, bool recu
     return true;
 }
 
-bool SpriteSheetIO::setOutPath(std::string &pathName) {
+bool SpriteSheetIO::setOutPath(const std::string &pathName) {
     outFilePath_ = fs::path(pathName).make_preferred();
 
     if (! fs::is_directory(outFilePath_)) {
@@ -57,9 +57,8 @@ bool SpriteSheetIO::setOutPath(std::string &pathName) {
  * When directoryIterator is nullptr, uses only the InfilePath instead (e.g. when infile is a .png itself)
  *
  * @param q the queue to fill
- * @return the queue, filled with png filePaths.
  */
-std::queue<std::string> &SpriteSheetIO::getPNGQueue(std::queue<std::string> &q) {
+void SpriteSheetIO::getPNGQueue(std::queue<std::string> &q) {
     if (directoryIterator_ == nullptr) {
         q.emplace(std::move(inFilePath_.string()));
     } else {
@@ -70,8 +69,6 @@ std::queue<std::string> &SpriteSheetIO::getPNGQueue(std::queue<std::string> &q) 
             }
         }
     }
-
-    return q;
 }
 
 /**
@@ -91,6 +88,76 @@ unsigned int SpriteSheetIO::loadPNG(const std::string& fileName, std::vector<uns
     if (!error) error = lodepng::decode(buffer, data.width, data.height, data.lodeState, encodedPixelBuffer);
 
     return error;
+}
+
+bool SpriteSheetIO::saveObjectSplits(unsigned char** data, const unsigned int spriteSize, const unsigned int spriteCount, lodepng::State& lodeState, const std::string& originalFileName) {
+    auto* sprite = new unsigned char[spriteSize * spriteSize * 4];
+    bool error = false;
+    std::string folderName = folderNameFromSheetName(originalFileName, SpriteSheetType::OBJECT);
+    // for each sprite
+    for (int i = 0; i < spriteCount; ++i) {
+        // for each sprite row
+        for (int j = 0; j < spriteSize; ++j) {
+            // access the pointer to sprite rows in the data.
+            unsigned char* spriteRow = data[i * spriteSize + j];
+            memcpy(sprite + j * spriteSize * 4, spriteRow, spriteSize * 4);
+        }
+        // unsigned char* sprite is now holding a spriteSize * spriteSize * 4 byte sprite. Finally!
+        error = saveSprite(sprite, i, spriteSize, lodeState, folderName);
+    }
+    delete[] sprite;
+
+    return error;
+}
+
+bool SpriteSheetIO::saveSprite(unsigned char* sprite, int index, const unsigned int spriteSize, lodepng::State& lodeState, const std::string& folderName) {
+    if (! fs::exists(outFilePath_/folderName)) {
+        fs::create_directory(outFilePath_/folderName);
+    }
+
+    std::string fileName = std::to_string(index) + ".png";
+    std::vector<unsigned char> encodedPixels;
+    bool error = lodepng::encode(encodedPixels, sprite, spriteSize, spriteSize, lodeState);
+    if (!error) error = lodepng::save_file(encodedPixels, (outFilePath_/folderName/fileName).string());
+
+    return error;
+}
+
+/**
+ * Very little is known on the expected folder name of the sprite splitting.
+ * Therefore an assumption is made it is the sheet name minus dimension, specified at the end.
+ *
+ * A realistic guess is that it's the same name as used in xml. Which is _usually_ this but not for some older files.
+ * @param sheet filename or path to the original spritesheet file
+ * @return suggested folder name by the above description.
+ */
+std::string SpriteSheetIO::folderNameFromSheetName(const std::string &sheet, const SpriteSheetType& type) {
+    auto name = fs::path(sheet).filename();
+    auto toLower = [](std::string&& s)->std::string { std::string o; for (const auto& c : s) o.push_back(static_cast<char>(std::tolower(c))); return o; };
+    size_t index;
+    std::string specifier;
+    switch(type) {
+        case SpriteSheetType::OBJECT: {
+            specifier = "objects";
+            std::string lowerName = {(toLower(std::move(name.string())))};
+            index = lowerName.find(specifier);
+            break;
+        }
+        case SpriteSheetType::CHARACTER: {
+            specifier = "chars";
+            std::string lowerName{toLower(std::move(name.string()))};
+            index = lowerName.find(specifier);
+            break;
+        }
+        default: return {"error_unknown_sheet_type"};
+    }
+
+    if (index == (size_t) -1) { // no type specifier? at least split off the .png and suggest that as folder name.
+        std::string returns = name.string();
+        return returns.substr(0, returns.size() - 4);
+    } else {
+        return name.string().substr(0, index + specifier.size());
+    }
 }
 
 SpriteSheetIO::~SpriteSheetIO() {

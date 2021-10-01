@@ -109,7 +109,7 @@ bool Splitter::split(const std::string &fileName, std::basic_ostream<char>& outS
 void Splitter::splitObjectSheet(unsigned char* imgData, unsigned int spriteSize, unsigned int spriteCount, unsigned char** out) {
     // 16 rows, 4 uchar per pixel.
     unsigned int sheetPixelWidth = spriteSize * OBJ_SHEET_ROW * 4;
-    // todo: (auto) vectorization? openMP go brr?
+#pragma omp simd collapse(2)
     for (int i = 0; i < spriteCount; ++i) {
         for (int j = 0; j < spriteSize; ++j) {
             //    (linear index)    =           (sprite row offset)                   + (sprite column offset)  + (pixel row offset)

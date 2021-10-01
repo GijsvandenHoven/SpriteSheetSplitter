@@ -76,7 +76,7 @@ void SpriteSheetIO::getPNGQueue(std::queue<std::string> &q) {
  *
  * @param fileName path to the PNG.
  * @param buffer Vector to-be-filled with the raw pixels of the PNG
- * @param data struct containing metadata from the spritesheet, like dimensions and lodepng decode state.
+ * @param data struct containing metadata from the SpriteSheet, like dimensions and lodePNG decode state.
  * @return error code from lodePNG (0 = OK)
  */
 unsigned int SpriteSheetIO::loadPNG(const std::string& fileName, std::vector<unsigned char> &buffer, SpriteSheetData& data) {
@@ -92,6 +92,7 @@ unsigned int SpriteSheetIO::loadPNG(const std::string& fileName, std::vector<uns
 
 bool SpriteSheetIO::saveObjectSplits(unsigned char** data, const unsigned int spriteSize, const unsigned int spriteCount, lodepng::State& lodeState, const std::string& originalFileName) {
     auto* sprite = new unsigned char[spriteSize * spriteSize * 4];
+    int skippedSprites = 0;
     bool error = false;
     std::string folderName = folderNameFromSheetName(originalFileName, SpriteSheetType::OBJECT);
     // for each sprite
@@ -102,8 +103,19 @@ bool SpriteSheetIO::saveObjectSplits(unsigned char** data, const unsigned int sp
             unsigned char* spriteRow = data[i * spriteSize + j];
             memcpy(sprite + j * spriteSize * 4, spriteRow, spriteSize * 4);
         }
-        // unsigned char* sprite is now holding a spriteSize * spriteSize * 4 byte sprite. Finally!
-        error = saveSprite(sprite, i, spriteSize, lodeState, folderName);
+        // need to check if a sprite is pure alpha (then don't save it)
+        uint32_t alpha = 0; // safe to add with until square sprites of size 2^31
+#pragma omp simd reduction(+:alpha)
+        for (int x = 3; x < spriteSize * spriteSize * 4; x += 4) {
+            alpha += sprite[x];
+        }
+
+        if (alpha == 0) {
+            skippedSprites++;
+        } else {
+            // unsigned char* sprite is now holding a spriteSize * spriteSize * 4 byte sprite. Finally!
+            error = saveSprite(sprite, i - skippedSprites, spriteSize, lodeState, folderName);
+        }
     }
     delete[] sprite;
 
@@ -128,7 +140,7 @@ bool SpriteSheetIO::saveSprite(unsigned char* sprite, int index, const unsigned 
  * Therefore an assumption is made it is the sheet name minus dimension, specified at the end.
  *
  * A realistic guess is that it's the same name as used in xml. Which is _usually_ this but not for some older files.
- * @param sheet filename or path to the original spritesheet file
+ * @param sheet filename or path to the original SpriteSheet file
  * @return suggested folder name by the above description.
  */
 std::string SpriteSheetIO::folderNameFromSheetName(const std::string &sheet, const SpriteSheetType& type) {

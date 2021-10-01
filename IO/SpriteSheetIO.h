@@ -19,10 +19,11 @@ public:
     ~SpriteSheetIO();
     bool setInPath(const std::string& pathName, bool shouldBePNG, bool recursive);
     bool setOutPath(const std::string& pathName);
-    void getPNGQueue(std::queue<std::string>& q);
+    void fillPNGQueue(std::queue<std::string>& q);
     static unsigned int loadPNG(const std::string& fileName, std::vector<unsigned char> &buffer, SpriteSheetData& data);
-    bool saveObjectSplits(unsigned char** data, unsigned int spriteSize, unsigned int spriteCount, lodepng::State& lodeState, const std::string& originalFileName);
-    bool saveCharSplits(unsigned char** data, unsigned int spriteSize, unsigned int spriteCount, lodepng::State& lodeState, const std::string& originalFileName);
+    unsigned int
+    saveObjectSplits(unsigned char** data, const unsigned int spriteSize, const unsigned int spriteCount, lodepng::State& lodeState, const std::string& originalFileName);
+    unsigned int saveCharSplits(unsigned char** data, unsigned int spriteSize, unsigned int spriteCount, lodepng::State& lodeState, const std::string& originalFileName);
 
 private:
     constexpr static int SPRITES_PER_CHAR = 5; // amount of sprites in a row of a charSheet. (idle, walk1, walk2, attack1, attack2).
@@ -32,7 +33,7 @@ private:
     ignorant_directory_iterator* directoryIterator_ = nullptr;
     static bool charSpritesAreAlpha(unsigned char* sprites [SPRITES_PER_CHAR], unsigned int spriteSize, const unsigned char* elongatedSprite);
     bool saveObjectSprite(const unsigned char* sprite, int index, unsigned int spriteSize, lodepng::State& lodeState, const std::string& folderName);
-    bool saveCharSprites(unsigned char* sprites [SPRITES_PER_CHAR], int index, unsigned int spriteSize, lodepng::State& lodeState, const std::string& folderName);
+    unsigned int saveCharSprites(unsigned char* sprites [SPRITES_PER_CHAR], int index, unsigned int spriteSize, lodepng::State& lodeState, const std::string& folderName);
     static std::string folderNameFromSheetName(const std::string& sheet, const SpriteSheetType& type);
 
     static const std::map<CharSheetNames, std::string> CHAR_SHEET_TYPE_TO_NAME; // todo: constexpr map using c++20? no support yet.

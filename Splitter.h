@@ -12,8 +12,8 @@ public:
 private:
     SpriteSheetIO ssio;
 
-    int workFolder(int workCap, std::queue<std::string>& pngFileNames);
-    bool split(const std::string& fileName, std::basic_ostream<char>&);
+    unsigned int workFolder(int workCap, std::queue<std::string>& pngs);
+    unsigned int split(const std::string& fileName, std::basic_ostream<char> &outStream);
     static bool validSpriteSheet(unsigned int width, unsigned int height, unsigned int columnCount);
     static void splitObjectSheet(unsigned char* imgData, unsigned int spriteSize, unsigned int spriteCount, unsigned char** out);
     static void splitCharSheet(unsigned char* imgData, unsigned int spriteSize, unsigned int spriteCount, unsigned char** out);

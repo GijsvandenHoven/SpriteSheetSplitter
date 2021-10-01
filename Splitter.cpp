@@ -5,35 +5,41 @@
 #include "Splitter.h"
 
 void Splitter::work(std::vector <SplitterOpts> &jobs) {
-    // todo: better counting (fail count, complete count, possibly why something failed)
-    int completedCount = 0;
+    unsigned int completedCount = 0;
     for (auto& job : jobs) {
         // todo: to really push the concurrency, any job could be its own process.
         bool inPathOK = ssio.setInPath(job.inDirectory, job.isPNGInDirectory, job.recursive);
         bool outPathOK = ssio.setOutPath(job.outDirectory);
-        // only work the job if the input is OK. The only input error that can happen from now on is a png decode error or malformed spritesheet.
+        // only work the job if the input is OK. The only input error that can happen from now on is a png decode error or malformed SpriteSheet.
         if (! (inPathOK && outPathOK)) continue;
 
         std::queue<std::string> pngQueue;
-        ssio.getPNGQueue(pngQueue);
+        ssio.fillPNGQueue(pngQueue);
 
         if (job.isPNGInDirectory) {
             std::string& onlyFile = pngQueue.front();
             completedCount += split(onlyFile, std::cout);
             pngQueue.pop();
         } else {
-            workFolder(job.workAmount, pngQueue);
+            completedCount += workFolder(job.workAmount, pngQueue);
         }
     }
 }
 
-int Splitter::workFolder(int workCap, std::queue<std::string>& pngs) {
+/**
+ * Given a queue of SpriteSheet file paths (typically ones from a folder generated via SpriteSheetIO::fillPNGQueue),
+ * @param workCap
+ * @param pngs
+ * @return
+ */
+unsigned int Splitter::workFolder(int workCap, std::queue<std::string>& pngs) {
+    unsigned int completedCount = 0;
     while (workCap-- > 0 && ! pngs.empty()) {
         std::string& file = pngs.front();
-        // for printing without data races
+        // for printing without data races. Downside, only prints when the object is destroyed (end of loop iteration).
         std::osyncstream synced_out(std::cout);
         // todo: threading goes here
-        split(file, synced_out);
+        completedCount = split(file, synced_out);
 
         // remove from queue after being done with the string
         pngs.pop();
@@ -41,20 +47,26 @@ int Splitter::workFolder(int workCap, std::queue<std::string>& pngs) {
 
     // wait for all threads to end.
 
-    return 0;
+    return completedCount;
 }
 
 /**
+ * Load a SpriteSheet from the given fileName, split the data in single sprites with the correct name, then save.
  *
- * @param imgBuffer A buffer to hold the image. This is first cleared when the function is called.
- *                  It is not created within the function to prevent re-allocating memory lots of times.
+ * Automatically detects the SpriteSheet type (if any).
+ * Does not split fully invisible (alpha 0 on every pixel) objects or chars. Chars with only some invisible frames are OK.
+ *
+ * Automatically determines the name of a folder based on the SpriteSheet name, unless (todo specified otherwise)
+ *
+ * @param fileName A path to a .png SpriteSheet file.
  * @param outStream stream for printing characters. Normally std::cout, but could be std::osyncstream from threading.
- * @return whether the image was successfully split
+ * @return The amount of sprites successfully created from splitting. todo: not correct, counts alphas. Make success + fail struct.
  */
-bool Splitter::split(const std::string &fileName, std::basic_ostream<char>& outStream) {
+unsigned int Splitter::split(const std::string &fileName, std::basic_ostream<char>& outStream) {
     std::vector<unsigned char> img;
-    img.clear();
     SpriteSheetData ssd;
+
+    outStream << "[INFO] Loading " << fileName << "\n";
 
     SpriteSheetIO::loadPNG(fileName, img, ssd);
 
@@ -78,7 +90,7 @@ bool Splitter::split(const std::string &fileName, std::basic_ostream<char>& outS
     unsigned int spriteSize; // size of a sprite (8, 16, 32..)
     unsigned int spriteCount; // amount of unsigned char* to expect back from splitting.
     unsigned char** spriteData; // array of SpriteSheet row indices, filled by upcoming split function.
-    bool saveSuccess;
+    unsigned int errorCount;
     switch(type) {
         case SpriteSheetType::OBJECT:
             spriteSize = ssd.width / OBJ_SHEET_ROW;
@@ -87,7 +99,7 @@ bool Splitter::split(const std::string &fileName, std::basic_ostream<char>& outS
 
             splitObjectSheet(img.data(), spriteSize, spriteCount, spriteData);
 
-            saveSuccess = ssio.saveObjectSplits(spriteData, spriteSize, spriteCount, ssd.lodeState, fileName);
+            errorCount = ssio.saveObjectSplits(spriteData, spriteSize, spriteCount, ssd.lodeState, fileName);
             break;
         case SpriteSheetType::CHARACTER:
             spriteSize = ssd.width / CHAR_SHEET_ROW;
@@ -95,23 +107,37 @@ bool Splitter::split(const std::string &fileName, std::basic_ostream<char>& outS
             spriteCount = ((img.size() / 4) / (spriteSize * spriteSize));
             spriteCount = (spriteCount / CHAR_SHEET_ROW) * (CHAR_SHEET_ROW - 2);
             spriteData = new unsigned char* [spriteSize * spriteCount]; // rows per sprite * amount of sprites
-            std::cout << "split with spritecount: " << spriteCount << " spriteSize: " << spriteSize << "\n";
+
             splitCharSheet(img.data(), spriteSize, spriteCount, spriteData);
 
-            saveSuccess = ssio.saveCharSplits(spriteData, spriteSize, spriteCount, ssd.lodeState, fileName);
+            errorCount = ssio.saveCharSplits(spriteData, spriteSize, spriteCount, ssd.lodeState, fileName);
             break;
         default: // did you add a new type to the enum?
             outStream << "[ERROR] unknown SpriteSheetType" << type << "\n";
             exit(-1);
     }
 
-    delete[] spriteData;
-    spriteData = nullptr;
+    if (errorCount > 0) {
+        outStream << "[WARNING] failed to split " << errorCount << " out of " << spriteCount << " sprites for:\n\t\t" << fileName << "\n";
+    }
 
-    // todo
-    return saveSuccess;
+    delete[] spriteData;
+
+    return spriteCount - errorCount;
 }
 
+/**
+ * Given a pointer to a SpriteSheets raw pixel data, and the amount of object sprites there are in it,
+ * fills a collection of byte pointers such that every [spriteSize] pointers forms a singe sprite.
+ * Each individual pointer is a row of sprite data.
+ *
+ * Assumes that the collection has enough space allocated to do this (spriteSize * spriteCount).
+ *
+ * @param imgData pointer to the raw bytes of the SpriteSheet
+ * @param spriteSize Size of a single sprite (8,16,32,...)
+ * @param spriteCount Amount of sprites that fit on the sheet
+ * @param out The collection of pointers to fill.
+ */
 void Splitter::splitObjectSheet(unsigned char* imgData, unsigned int spriteSize, unsigned int spriteCount, unsigned char** out) {
     // 16 rows, 4 uchar per pixel.
     unsigned int sheetPixelWidth = spriteSize * OBJ_SHEET_ROW * 4;
@@ -124,6 +150,19 @@ void Splitter::splitObjectSheet(unsigned char* imgData, unsigned int spriteSize,
     }
 }
 
+/**
+ * Given a pointer to a SpriteSheets raw pixel data, and the amount of character sprites there are in it,
+ * fills a collection of byte pointers such that every [spriteSize] pointers forms a singe sprite.
+ * Each individual pointer is a row of sprite data.
+ *
+ * Assumes that the collection has enough space allocated to do this (spriteSize * spriteCount).
+ *
+ * @param imgData pointer to the raw bytes of the SpriteSheet
+ * @param spriteSize Size of a single sprite (8,16,32,...)
+ * @param spriteCount Amount of sprites that fit on the sheet.
+ *                    Keep in mind skipped and conjoined columns for Char sheets, the function accounts for this.
+ * @param out The collection of pointers to fill.
+ */
 void Splitter::splitCharSheet(unsigned char* imgData, unsigned int spriteSize, unsigned int spriteCount, unsigned char** out) {
     /* Char sheets are special. They consist of seven columns, where each row belongs to a single char.
      * Column 0 is their idle frame.
@@ -139,12 +178,11 @@ void Splitter::splitCharSheet(unsigned char* imgData, unsigned int spriteSize, u
 #pragma omp simd collapse(2)
     for (int i = 0; i < spriteCount; ++i) {
         for (int j = 0; j < spriteSize; ++j) {
-            // linear index         =           (sprite row offset)                                + (sprite column offset)               + (extra offset, skips column 3)   + (pixel row offset)
-            out[i * spriteSize + j] = imgData + (i / CHARS_PER_ROW) * spriteSize * sheetPixelWidth + (i % CHARS_PER_ROW) * spriteSize * 4 + columnOffset(i) * spriteSize * 4 + j * sheetPixelWidth;
+            // linear index         =           (sprite row offset)                                + (sprite column offset + (extra offset, skips column 3))  + (pixel row offset)
+            out[i * spriteSize + j] = imgData + (i / CHARS_PER_ROW) * spriteSize * sheetPixelWidth + ((i % CHARS_PER_ROW) + columnOffset(i)) * spriteSize * 4 + j * sheetPixelWidth;
         }
     }
 }
-
 
 /**
  * tests if the given image dimensions are that of a correctly formed SpriteSheetData.
@@ -157,7 +195,7 @@ void Splitter::splitCharSheet(unsigned char* imgData, unsigned int spriteSize, u
  * @return whether or not it is a valid SpriteSheetData.
  */
 bool Splitter::validSpriteSheet(unsigned int width, unsigned int height, unsigned int columnCount) {
-    // equally sized columns?
+    // columns are equally sized?
     float columnSize = static_cast<float>(width) / static_cast<float>(columnCount);
     if (columnSize != static_cast<float>(static_cast<int>(columnSize))) {
         return false;
@@ -167,7 +205,7 @@ bool Splitter::validSpriteSheet(unsigned int width, unsigned int height, unsigne
     if (spriteSize < 8 || 0 != (spriteSize & (spriteSize - 1))) {
         return false;
     }
-    // height correct in terms of spritesheet rows?
+    // height correct in terms of SpriteSheet rows?
     float rowSize = static_cast<float>(height) / static_cast<float>(spriteSize);
     if (rowSize != static_cast<float>(static_cast<int>(rowSize))) {
         return false;

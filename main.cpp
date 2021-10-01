@@ -1,7 +1,7 @@
 #include <iostream>
 #include <getopt.h>
 #include <vector>
-#include "util/splitterOptions.h"
+#include "util/SplitterOptions.h"
 #include "Splitter.h"
 
 // https://linux.die.net/man/3/getopt

@@ -3,9 +3,11 @@
 
 #include <filesystem>
 #include <queue>
+#include <map>
 #include "lodepng.h"
 #include "../util/SpriteSheetData.h"
 #include "../Util/SpriteSheetType.h"
+#include "../util/CharSheetNames.h"
 
 namespace fs = std::filesystem;
 
@@ -20,19 +22,28 @@ public:
     void getPNGQueue(std::queue<std::string>& q);
     static unsigned int loadPNG(const std::string& fileName, std::vector<unsigned char> &buffer, SpriteSheetData& data);
     bool saveObjectSplits(unsigned char** data, unsigned int spriteSize, unsigned int spriteCount, lodepng::State& lodeState, const std::string& originalFileName);
-
+    bool saveCharSplits(unsigned char** data, unsigned int spriteSize, unsigned int spriteCount, lodepng::State& lodeState, const std::string& originalFileName);
 
 private:
+    constexpr static int SPRITES_PER_CHAR = 5; // amount of sprites in a row of a charSheet. (idle, walk1, walk2, attack1, attack2).
+
     fs::path inFilePath_;
     fs::path outFilePath_;
     ignorant_directory_iterator* directoryIterator_ = nullptr;
-    bool saveSprite(unsigned char* sprite, int index, unsigned int spriteSize, lodepng::State& lodeState, const std::string& folderName);
+    static bool charSpritesAreAlpha(unsigned char* sprites [SPRITES_PER_CHAR], unsigned int spriteSize, const unsigned char* elongatedSprite);
+    bool saveObjectSprite(const unsigned char* sprite, int index, unsigned int spriteSize, lodepng::State& lodeState, const std::string& folderName);
+    bool saveCharSprites(unsigned char* sprites [SPRITES_PER_CHAR], int index, unsigned int spriteSize, lodepng::State& lodeState, const std::string& folderName);
     static std::string folderNameFromSheetName(const std::string& sheet, const SpriteSheetType& type);
+
+    static const std::map<CharSheetNames, std::string> CHAR_SHEET_TYPE_TO_NAME; // todo: constexpr map using c++20? no support yet.
+    // needs c++20 constexpr containers, no compiler support yet (assuming map gets constexpr at all, not entirely clear on that! They mention containers _such as_ vector and string, but cant find examples of anything other than these two...).
+    //static_assert(SPRITES_PER_CHAR == CHAR_SHEET_TYPE_TO_NAME.size());
+    static_assert(SPRITES_PER_CHAR == to_integral(CharSheetNames::ATTACK_2) + 1);
 };
 
 /**
  * An interface that obscures the type of iterator (fs::directory_iterator or fs::recursive_directory_iterator).
- * The IO class does not care, it just wants the next path to work on.
+ * The IO class does not care, it just wants the next path to evaluate.
  */
 class ignorant_directory_iterator {
 public:

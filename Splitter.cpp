@@ -53,6 +53,7 @@ int Splitter::workFolder(int workCap, std::queue<std::string>& pngs) {
  */
 bool Splitter::split(const std::string &fileName, std::basic_ostream<char>& outStream) {
     std::vector<unsigned char> img;
+    img.clear();
     SpriteSheetData ssd;
 
     SpriteSheetIO::loadPNG(fileName, img, ssd);
@@ -90,12 +91,17 @@ bool Splitter::split(const std::string &fileName, std::basic_ostream<char>& outS
             break;
         case SpriteSheetType::CHARACTER:
             spriteSize = ssd.width / CHAR_SHEET_ROW;
-            spriteData = nullptr;
-            //splitCharSheet(img, spriteSize, spriteCount);
-            //break;
-            return false; // todo
+            // correct for column 3 being empty, and 5+6 being joined (see splitCharSheet function comment)
+            spriteCount = ((img.size() / 4) / (spriteSize * spriteSize));
+            spriteCount = (spriteCount / CHAR_SHEET_ROW) * (CHAR_SHEET_ROW - 2);
+            spriteData = new unsigned char* [spriteSize * spriteCount]; // rows per sprite * amount of sprites
+            std::cout << "split with spritecount: " << spriteCount << " spriteSize: " << spriteSize << "\n";
+            splitCharSheet(img.data(), spriteSize, spriteCount, spriteData);
+
+            saveSuccess = ssio.saveCharSplits(spriteData, spriteSize, spriteCount, ssd.lodeState, fileName);
+            break;
         default: // did you add a new type to the enum?
-            std::cout << "[ERROR] unknown SpriteSheetType" << type << "\n";
+            outStream << "[ERROR] unknown SpriteSheetType" << type << "\n";
             exit(-1);
     }
 
@@ -112,28 +118,31 @@ void Splitter::splitObjectSheet(unsigned char* imgData, unsigned int spriteSize,
 #pragma omp simd collapse(2)
     for (int i = 0; i < spriteCount; ++i) {
         for (int j = 0; j < spriteSize; ++j) {
-            //    (linear index)    =           (sprite row offset)                   + (sprite column offset)  + (pixel row offset)
-            out[i * spriteSize + j] = imgData + (i/16) * spriteSize * sheetPixelWidth + (i%16) * spriteSize * 4 + j * sheetPixelWidth;
+            //    (linear index)    =           (sprite row offset)                              + (sprite column offset)             + (pixel row offset)
+            out[i * spriteSize + j] = imgData + (i/OBJ_SHEET_ROW) * spriteSize * sheetPixelWidth + (i%OBJ_SHEET_ROW) * spriteSize * 4 + j * sheetPixelWidth;
         }
     }
 }
 
-void Splitter::splitCharSheet(std::vector<unsigned char>& img, unsigned int spriteSize, std::vector<unsigned char**>& out) {
+void Splitter::splitCharSheet(unsigned char* imgData, unsigned int spriteSize, unsigned int spriteCount, unsigned char** out) {
     /* Char sheets are special. They consist of seven columns, where each row belongs to a single char.
      * Column 0 is their idle frame.
      * Column 1 and 2 are their walking frames.
-     * Column 3 is always empty. (Mightve been intended for a fancy walk frame. Never happened.)
+     * Column 3 is always empty. (Might've been intended for a fancy walk frame. Never happened.)
      * Column 4 and (5+6) are attack frames.
      * Column 5 and 6 are joined as one sprite for i.e. an extended arm holding a sword.
      * Meaning all sprites here are square except for the 5th, it is a size x 2size rectangle!
      */
-    int rowIndex = 0;
-    auto sprite = new unsigned char*[spriteSize];
-    unsigned char* imgData = img.data();
-    // divide (bytes per pixel) (sprite height) (sprite width). THEN correct for 2 fewer sprites per row. (3 empty, 5+6 joined)
-    unsigned int spriteCount = ((img.size() / 4) / spriteSize) / spriteSize;
-    spriteCount = (spriteCount / CHAR_SHEET_ROW) * (CHAR_SHEET_ROW - 2);
-    std::cout << "DEBUG: # sprites on this sheet: " << spriteCount << "\n";
+    unsigned int sheetPixelWidth = spriteSize * CHAR_SHEET_ROW * 4;
+    const int CHARS_PER_ROW = CHAR_SHEET_ROW - 2;
+    auto columnOffset = [](int i)->bool { return i % CHARS_PER_ROW >= 3; };
+#pragma omp simd collapse(2)
+    for (int i = 0; i < spriteCount; ++i) {
+        for (int j = 0; j < spriteSize; ++j) {
+            // linear index         =           (sprite row offset)                                + (sprite column offset)               + (extra offset, skips column 3)   + (pixel row offset)
+            out[i * spriteSize + j] = imgData + (i / CHARS_PER_ROW) * spriteSize * sheetPixelWidth + (i % CHARS_PER_ROW) * spriteSize * 4 + columnOffset(i) * spriteSize * 4 + j * sheetPixelWidth;
+        }
+    }
 }
 
 

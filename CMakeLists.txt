@@ -7,6 +7,6 @@ find_package(OpenMP REQUIRED)
 
 add_subdirectory(lodepng)
 
-add_executable(SpriteSheetSplitter main.cpp util/splitterOptions.h IO/SpriteSheetIO.cpp IO/SpriteSheetIO.h Splitter.cpp Splitter.h util/SpriteSheetData.h util/SpriteSheetType.h)
+add_executable(SpriteSheetSplitter main.cpp util/SplitterOptions.h IO/SpriteSheetIO.cpp IO/SpriteSheetIO.h Splitter.cpp Splitter.h util/SpriteSheetData.h util/SpriteSheetType.h util/CharSheetNames.h)
 
 target_link_libraries(SpriteSheetSplitter PRIVATE lodepng OpenMP::OpenMP_CXX)

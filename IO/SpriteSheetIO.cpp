@@ -1,14 +1,6 @@
 #include <iostream>
 #include "SpriteSheetIO.h"
 
-// did anyone ever mention the naming scheme of these frames is stupid? There, I said it :).
-const std::map<CharSheetNames, std::string> SpriteSheetIO::CHAR_SHEET_TYPE_TO_NAME { // NOLINT(cert-err58-cpp) (Warns that this can throw an exception before main is called. It's true, map constructor isn't noexcept, but...)
-        {CharSheetNames::IDLE, "Right_Walk_0"},
-        {CharSheetNames::WALK_1, "Right_Walk_1"},
-        {CharSheetNames::WALK_2, "Right_Walk_2"},
-        {CharSheetNames::ATTACK_1, "Right_Attack_0"},
-        {CharSheetNames::ATTACK_2, "Right_Attack_1"},
-};
 /**
  * Validates the given path and sets the inFilePath member variable. Note, the member variable is set even if invalid.
  * @param pathName the pathName to set the in path to.
@@ -264,10 +256,13 @@ unsigned int SpriteSheetIO::saveCharSprites(unsigned char *sprites [SPRITES_PER_
         std::string baseFileName = std::to_string(index) + '_';
 
         for (const auto& kvp : CHAR_SHEET_TYPE_TO_NAME) {
+
             int spriteIndex = to_integral(kvp.first);
+            unsigned int width = spriteIndex == CharSheetInfo::ATTACK_2 ? (2 * spriteSize) : spriteSize; // attack2 is twice as wide!
+
             std::string fileName = baseFileName + kvp.second + ".png"; // index_descriptor.png format needed
+
             std::vector<unsigned char> encodedPixels;
-            unsigned int width = spriteIndex == CharSheetNames::ATTACK_2 ? (2 * spriteSize) : spriteSize; // attack2 is twice as wide!
             singleError = lodepng::encode(encodedPixels, sprites[spriteIndex], width, spriteSize, lodeState);
             if (!singleError) {
                 singleError = lodepng::save_file(encodedPixels, (outFilePath_/folderName/fileName).string());

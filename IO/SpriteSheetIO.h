@@ -32,8 +32,8 @@ private:
     [[nodiscard]] bool createCleanDirectory(const std::string& dir) const;
     void saveObjectSplits(SpriteSplittingData& ssd) const;
     void saveCharSplits(SpriteSplittingData& ssd) const;
-    void saveObjectSprite(const unsigned char* sprite, int index, unsigned int spriteSize, lodepng::State& lodeState, const std::string& folderName, SpriteSplittingStatus& jobStats) const;
-    void saveCharSprites(unsigned char* sprites [SPRITES_PER_CHAR], int index, unsigned int spriteSize, lodepng::State& lodeState, const std::string& folderName, SpriteSplittingStatus& jobStats) const;
+    bool saveObjectSprite(const unsigned char* sprite, int index, unsigned int spriteSize, lodepng::State& lodeState, const std::string& folderName) const;
+    unsigned int saveCharSprites(unsigned char* sprites [SPRITES_PER_CHAR], int index, unsigned int spriteSize, lodepng::State& lodeState, const std::string& folderName) const;
     static bool charSpritesAreAlpha(unsigned char* sprites [SPRITES_PER_CHAR], unsigned int spriteSize, const unsigned char* elongatedSprite);
     static std::string folderNameFromSheetName(const std::string& sheet, const SpriteSheetType& type);
 };

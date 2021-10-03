@@ -166,6 +166,7 @@ void Splitter::splitObjectSheet(SpriteSplittingData& ssd) {
     unsigned char** out = ssd.splitSprites;
     // constant * SZ rows, 4 uchar per pixel.
     unsigned int sheetPixelWidth = spriteSize * OBJ_SHEET_ROW * 4;
+
 #pragma omp simd collapse(2)
     for (int i = 0; i < spriteCount; ++i) {
         for (int j = 0; j < spriteSize; ++j) {
@@ -202,6 +203,7 @@ void Splitter::splitCharSheet(SpriteSplittingData& ssd) {
     unsigned int sheetPixelWidth = spriteSize * CHAR_SHEET_ROW * 4;
     const int CHARS_PER_ROW = CHAR_SHEET_ROW - 2;
     auto columnOffset = [](int i)->bool { return i % CHARS_PER_ROW >= 3; };
+
 #pragma omp simd collapse(2)
     for (int i = 0; i < spriteCount; ++i) {
         for (int j = 0; j < spriteSize; ++j) {

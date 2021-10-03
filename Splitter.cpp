@@ -33,12 +33,15 @@ void Splitter::work(std::vector <SplitterOpts> &jobs) {
 }
 
 /**
- * todo
- * @param workCap
- * @param pngs
- * @param jobStats
+ * Split all PNGs of a folder by following the string filepaths in the pngs queue.
+ *
+ * (todo) this is done with one thread per file for adequate performance
+ *
+ * @param workCap the maximum amount of files to process before stopping
+ * @param pngs the queue of FilePaths to SpriteSheets
+ * @param jobStats stat tracking object
  */
-void Splitter::workFolder(int workCap, std::queue<std::string> &pngs, SpriteSplittingStatus &jobStats) {
+void Splitter::workFolder(int workCap, std::queue<std::string> &pngs, SpriteSplittingStatus &jobStats) const {
 
     // todo: transform to forloop, pragma omp parallel for
     while (workCap-- > 0 && ! pngs.empty()) {
@@ -70,7 +73,7 @@ void Splitter::workFolder(int workCap, std::queue<std::string> &pngs, SpriteSpli
  * @param outStream stream for printing characters. Normally std::cout, but could be std::osyncstream from threading.
  * @param jobStats struct for counting stats of splitting.
  */
-void Splitter::split(const std::string &fileName, SpriteSplittingStatus &jobStats, std::basic_ostream<char> &outStream) {
+void Splitter::split(const std::string &fileName, SpriteSplittingStatus &jobStats, std::basic_ostream<char> &outStream) const {
     std::vector<unsigned char> img;
     SpriteSheetData ssd;
 

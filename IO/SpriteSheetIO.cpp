@@ -116,7 +116,7 @@ unsigned int SpriteSheetIO::loadPNG(const std::string& fileName, std::vector<uns
  * @param originalFileName the name of the SpriteSheet these bytes originally came from.
  * @param jobStats tracking object for sprite splitting stats
  */
-void SpriteSheetIO::saveObjectSplits(unsigned char** data, const unsigned int spriteSize, const unsigned int spriteCount, lodepng::State& lodeState, const std::string& originalFileName, SpriteSplittingStatus& jobStats) {
+void SpriteSheetIO::saveObjectSplits(unsigned char** data, const unsigned int spriteSize, const unsigned int spriteCount, lodepng::State& lodeState, const std::string& originalFileName, SpriteSplittingStatus& jobStats) const {
     auto* sprite = new unsigned char[spriteSize * spriteSize * 4];
     int skippedSprites = 0;
     std::string folderName = folderNameFromSheetName(originalFileName, SpriteSheetType::OBJECT);
@@ -157,7 +157,7 @@ void SpriteSheetIO::saveObjectSplits(unsigned char** data, const unsigned int sp
  * @param folderName the name of the folder this should go into. An absolute path (using outFilePath_ and index) is generated.
  * @param jobStats tracking object for sprite splitting stats
  */
-void SpriteSheetIO::saveObjectSprite(const unsigned char* sprite, int index, unsigned int spriteSize, lodepng::State& lodeState, const std::string& folderName, SpriteSplittingStatus& jobStats) {
+void SpriteSheetIO::saveObjectSprite(const unsigned char* sprite, int index, unsigned int spriteSize, lodepng::State& lodeState, const std::string& folderName, SpriteSplittingStatus& jobStats) const {
     bool error = false;
 
     if (! fs::exists(outFilePath_/folderName)) {
@@ -192,7 +192,7 @@ void SpriteSheetIO::saveObjectSprite(const unsigned char* sprite, int index, uns
  * @param originalFileName the original name of the SpriteSheet these sprites come from.
  * @param jobStats tracking object for sprite splitting stats
  */
-void SpriteSheetIO::saveCharSplits(unsigned char** data, unsigned int spriteSize, unsigned int spriteCount, lodepng::State& lodeState, const std::string& originalFileName, SpriteSplittingStatus& jobStats) {
+void SpriteSheetIO::saveCharSplits(unsigned char** data, unsigned int spriteSize, unsigned int spriteCount, lodepng::State& lodeState, const std::string& originalFileName, SpriteSplittingStatus& jobStats) const {
     // for char sheets, one row = one character. If there exists invisible frames on that row (but not all are invisible),
     // then that is perfectly valid. For example, pet skins without attack frames.
     // I suspect Exalt still expects full alpha frames to slot into e.g. a pets attack frames.
@@ -246,7 +246,7 @@ void SpriteSheetIO::saveCharSplits(unsigned char** data, unsigned int spriteSize
  * @param folderName the name of the folder this should go into. An absolute path (using outFilePath_ and index) is generated.
  * @param jobStats tracking object for sprite splitting stats
  */
-void SpriteSheetIO::saveCharSprites(unsigned char *sprites [SPRITES_PER_CHAR], int index, unsigned int spriteSize, lodepng::State &lodeState, const std::string &folderName, SpriteSplittingStatus& jobStats) {
+void SpriteSheetIO::saveCharSprites(unsigned char *sprites [SPRITES_PER_CHAR], int index, unsigned int spriteSize, lodepng::State &lodeState, const std::string &folderName, SpriteSplittingStatus& jobStats) const {
     bool error = false;
 
     if (! fs::exists(outFilePath_/folderName)) {

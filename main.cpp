@@ -190,7 +190,6 @@ void parseSingleParameter(int c, SplitterOpts& options) {
             std::cout << "                           " << "When a folder is specified, processes the folder based on -k.\n";
             std::cout << "--in (-i):                 " << "Alias for -d.\n";
             std::cout << "--out (-o):                " << "The output directory. When not specified, outputs to the input directory.\n";
-            // TODO: consider how to handle errors / warnings / prevent the case of trying to split a spritesplit output folder. Easy on the current run (just remember the folder name!) but what about subsequent runs?
             std::cout << "--recursive (-r):          " << "Used when processing folders. When enabled, also checks subfolders for pngs.\n";
             std::cout << "--keepworking (-k):        " << "Amount of files to process in a folder before stopping.\n";
             std::cout << "                           " << "Defaults to process the entire folder unless specified otherwise.\n";

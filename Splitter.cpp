@@ -1,5 +1,6 @@
 #include <vector>
 #include <syncstream>
+#include <omp.h>
 #include "Splitter.h"
 #include "util/SimpleTimer.h"
 
@@ -43,6 +44,7 @@ void Splitter::work(std::vector <SplitterOpts> &jobs) {
 void Splitter::workFolder(int workCap, std::queue<std::string> &pngs, SpriteSplittingStatus &jobStats) const {
     const int work = std::min(workCap, static_cast<int>(pngs.size()));
 
+    SimpleTimer folder("Splitting this folder");
 #pragma omp parallel for schedule(dynamic) shared(work, pngs, std::cout, jobStats) default(none)
     for (int tid = 0; tid < work; ++tid) {
         std::string file;

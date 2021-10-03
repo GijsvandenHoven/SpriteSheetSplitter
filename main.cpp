@@ -9,6 +9,7 @@ extern char* optarg; // NOLINT(readability-redundant-declaration)
 [[maybe_unused]] // it is modified in getopt.h. Silly compiler.
 extern int optind; // NOLINT(readability-redundant-declaration)
 
+// todo: use constexpr std::string when gcc supports it
 // printed when the user gives illegal input
 std::string& getHELP_STRING() {
     static std::string HELP_STRING = "usage: (todo)\nUse --help for more information.\n";

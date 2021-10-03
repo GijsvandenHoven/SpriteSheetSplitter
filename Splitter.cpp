@@ -1,8 +1,7 @@
 #include <vector>
-#include <thread>
 #include <syncstream>
-#include <future>
 #include "Splitter.h"
+#include "util/SimpleTimer.h"
 
 void Splitter::work(std::vector <SplitterOpts> &jobs) {
     SpriteSplittingStatus jobStats{};
@@ -18,6 +17,7 @@ void Splitter::work(std::vector <SplitterOpts> &jobs) {
         std::queue<std::string> pngQueue;
         ssio.fillPNGQueue(pngQueue);
 
+        // todo: time this
         if (job.isPNGInDirectory) {
             std::string& onlyFile = pngQueue.front();
             split(onlyFile, jobStats, std::cout);
@@ -74,6 +74,7 @@ void Splitter::workFolder(int workCap, std::queue<std::string> &pngs, SpriteSpli
  * @param jobStats struct for counting stats of splitting.
  */
 void Splitter::split(const std::string &fileName, SpriteSplittingStatus &jobStats, std::basic_ostream<char> &outStream) const {
+    SimpleTimer timer {"Splitting", outStream};
     std::vector<unsigned char> img;
     SpriteSheetData ssd;
 

@@ -1,5 +1,6 @@
 #include <vector>
 #include <syncstream>
+#include <omp.h>
 #include "Splitter.h"
 #include "util/SimpleTimer.h"
 
@@ -118,7 +119,7 @@ void Splitter::split(const std::string &fileName, SpriteSplittingStatus &jobStat
 
             splitObjectSheet(img.data(), spriteSize, spriteCount, spriteData);
 
-            ssio.saveObjectSplits(spriteData, spriteSize, spriteCount, ssd.lodeState, fileName, jobStats);
+            ssio.saveSplits(spriteData, spriteSize, spriteCount, type, ssd.lodeState, fileName, jobStats);
             break;
         case SpriteSheetType::CHARACTER:
             spriteSize = ssd.width / CHAR_SHEET_ROW;
@@ -129,7 +130,7 @@ void Splitter::split(const std::string &fileName, SpriteSplittingStatus &jobStat
 
             splitCharSheet(img.data(), spriteSize, spriteCount, spriteData);
 
-            ssio.saveCharSplits(spriteData, spriteSize, spriteCount, ssd.lodeState, fileName, jobStats);
+            ssio.saveSplits(spriteData, spriteSize, spriteCount, type, ssd.lodeState, fileName, jobStats);
             break;
         default: // did you add a new type to the enum?
             outStream << "[ERROR] unknown SpriteSheetType" << type << "\n";

@@ -22,13 +22,15 @@ public:
     bool setOutPath(const std::string& pathName);
     void fillPNGQueue(std::queue<std::string>& q);
     static unsigned int loadPNG(const std::string& fileName, std::vector<unsigned char> &buffer, SpriteSheetData& data);
-    void saveObjectSplits(unsigned char** data, unsigned int spriteSize, unsigned int spriteCount, lodepng::State& lodeState, const std::string& originalFileName, SpriteSplittingStatus& jobStats) const;
-    void saveCharSplits(unsigned char** data, unsigned int spriteSize, unsigned int spriteCount, lodepng::State& lodeState, const std::string& originalFileName, SpriteSplittingStatus& jobStats) const;
+    void saveSplits(unsigned char** data, unsigned int spriteSize, unsigned int spriteCount, SpriteSheetType& type, lodepng::State& lodeState, const std::string& originalFileName, SpriteSplittingStatus& jobStats) const;
 
 private:
     fs::path inFilePath_;
     fs::path outFilePath_;
     ignorant_directory_iterator* directoryIterator_ = nullptr;
+    [[nodiscard]] bool createCleanDirectory(const std::string& dir) const;
+    void saveObjectSplits(unsigned char** data, unsigned int spriteSize, unsigned int spriteCount, lodepng::State& lodeState, const std::string& originalFileName, SpriteSplittingStatus& jobStats) const;
+    void saveCharSplits(unsigned char** data, unsigned int spriteSize, unsigned int spriteCount, lodepng::State& lodeState, const std::string& originalFileName, SpriteSplittingStatus& jobStats) const;
     void saveObjectSprite(const unsigned char* sprite, int index, unsigned int spriteSize, lodepng::State& lodeState, const std::string& folderName, SpriteSplittingStatus& jobStats) const;
     void saveCharSprites(unsigned char* sprites [SPRITES_PER_CHAR], int index, unsigned int spriteSize, lodepng::State& lodeState, const std::string& folderName, SpriteSplittingStatus& jobStats) const;
     static bool charSpritesAreAlpha(unsigned char* sprites [SPRITES_PER_CHAR], unsigned int spriteSize, const unsigned char* elongatedSprite);

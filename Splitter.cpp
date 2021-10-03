@@ -17,7 +17,6 @@ void Splitter::work(std::vector <SplitterOpts> &jobs) {
         std::queue<std::string> pngQueue;
         ssio.fillPNGQueue(pngQueue);
 
-        // todo: time this
         if (job.isPNGInDirectory) {
             std::string& onlyFile = pngQueue.front();
             split(onlyFile, jobStats, std::cout);
@@ -35,30 +34,35 @@ void Splitter::work(std::vector <SplitterOpts> &jobs) {
 /**
  * Split all PNGs of a folder by following the string filepaths in the pngs queue.
  *
- * (todo) this is done with one thread per file for adequate performance
+ * This is done by assigning one thread per file for adequate performance
  *
  * @param workCap the maximum amount of files to process before stopping
  * @param pngs the queue of FilePaths to SpriteSheets
  * @param jobStats stat tracking object
  */
 void Splitter::workFolder(int workCap, std::queue<std::string> &pngs, SpriteSplittingStatus &jobStats) const {
+    const int work = std::min(workCap, static_cast<int>(pngs.size()));
 
-    // todo: transform to forloop, pragma omp parallel for
-    while (workCap-- > 0 && ! pngs.empty()) {
-        std::string& file = pngs.front(); // todo pragma omp atomic
+#pragma omp parallel for schedule(dynamic) shared(work, pngs, std::cout, jobStats) default(none)
+    for (int tid = 0; tid < work; ++tid) {
+        std::string file;
+#pragma omp critical(queueAccess)
+        {
+            file = std::move(pngs.front());
+            pngs.pop();
+        }
+
         // for printing without data races. Downside, only prints when the object is destroyed (end of loop iteration).
         std::osyncstream synced_out(std::cout);
 
         SpriteSplittingStatus individualJobStats{};
         split(file, individualJobStats, synced_out);
 
-        // remove from queue after being done with the string
-        pngs.pop();
-        // update status todo: pragma omp atomic
-        jobStats += individualJobStats;
+#pragma omp critical(updateStats)
+        {
+            jobStats += individualJobStats;
+        }
     }
-
-    // wait for all threads to end.
 }
 
 /**
@@ -74,7 +78,7 @@ void Splitter::workFolder(int workCap, std::queue<std::string> &pngs, SpriteSpli
  * @param jobStats struct for counting stats of splitting.
  */
 void Splitter::split(const std::string &fileName, SpriteSplittingStatus &jobStats, std::basic_ostream<char> &outStream) const {
-    SimpleTimer timer {"Splitting", outStream};
+    SimpleTimer timer {"Splitting this file", outStream};
     std::vector<unsigned char> img;
     SpriteSheetData ssd;
 

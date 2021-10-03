@@ -91,7 +91,7 @@ void SpriteSheetIO::fillPNGQueue(std::queue<std::string> &q) {
  * @param data struct containing metadata from the SpriteSheet, like dimensions and lodePNG decode state.
  * @return error code from lodePNG (0 = OK)
  */
-unsigned int SpriteSheetIO::loadPNG(const std::string& fileName, std::vector<unsigned char> &buffer, SpriteSheetData& data) {
+unsigned int SpriteSheetIO::loadPNG(const std::string& fileName, std::vector<unsigned char> &buffer, SpriteSheetPNGData& data) {
     unsigned int& error = data.error;
     std::vector<unsigned char> encodedPixelBuffer;
 
@@ -111,16 +111,16 @@ unsigned int SpriteSheetIO::loadPNG(const std::string& fileName, std::vector<uns
  * @param originalFileName FileName of the spriteSheet these splits came from
  * @param jobStats tracking object for splitting.
  */
-void SpriteSheetIO::saveSplits(unsigned char** data, unsigned int spriteSize, unsigned int spriteCount, SpriteSheetType& type, lodepng::State& lodeState, const std::string& originalFileName, SpriteSplittingStatus& jobStats) const {
-    switch (type) {
+void SpriteSheetIO::saveSplits(SpriteSplittingData& ssd) const {
+    switch (ssd.sheetType) {
         case SpriteSheetType::OBJECT:
-            saveObjectSplits(data, spriteSize, spriteCount, lodeState, originalFileName, jobStats);
+            saveObjectSplits(ssd);
             break;
         case SpriteSheetType::CHARACTER:
-            saveCharSplits(data, spriteSize, spriteCount, lodeState, originalFileName, jobStats);
+            saveCharSplits(ssd);
             break;
         default: // did you add a new SpriteSheetType?
-            std::cout << "[ERROR]: Unknown SpriteSheetType " << type << "\n"; // is at risk of being mangled in printing due to multithreading, but given this is a 'developer only' error, I think that is OK. No need to supply the synced outstream or create one.
+            std::cout << "[ERROR]: Unknown SpriteSheetType " << ssd.sheetType << "\n"; // is at risk of being mangled in printing due to multithreading, but given this is a 'developer only' error, I think that is OK. No need to supply the synced outstream or create one.
             exit(-1);
     }
 }
@@ -133,35 +133,30 @@ void SpriteSheetIO::saveSplits(unsigned char** data, unsigned int spriteSize, un
  * Every byte pointer in the collection points to a (spriteSize) sized row of RGBA bytes.
  * Assumes every sprite is a square shape.
  *
- * @param data the collection of byte pointers
- * @param spriteSize the (square) size of the sprite
- * @param spriteCount the amount of sprites in the collection.
- * @param lodeState the LodePNG library 'State' object, used for encoding and decoding files.
- * @param originalFileName the name of the SpriteSheet these bytes originally came from.
- * @param jobStats tracking object for sprite splitting stats
+ * @param ssd Struct containing all needed information, see SpriteSplittingData.h
  */
-void SpriteSheetIO::saveObjectSplits(unsigned char** data, const unsigned int spriteSize, const unsigned int spriteCount, lodepng::State& lodeState, const std::string& originalFileName, SpriteSplittingStatus& jobStats) const {
+void SpriteSheetIO::saveObjectSplits(SpriteSplittingData& ssd) const {
 
-    std::string folderName = folderNameFromSheetName(originalFileName, SpriteSheetType::OBJECT);
+    std::string folderName = folderNameFromSheetName(ssd.originalFileName, SpriteSheetType::OBJECT);
     bool cleanedFolder = createCleanDirectory(folderName);
     if (! cleanedFolder) {
-        jobStats.n_save_error += spriteCount; // mark every sprite as failed.
+        ssd.stats.n_save_error += ssd.spriteCount; // mark every sprite as failed.
         return;
     }
 
-    auto* sprite = new unsigned char[spriteSize * spriteSize * 4];
+    auto* sprite = new unsigned char[ssd.spriteSize * ssd.spriteSize * 4];
     int skippedSprites = 0;
     // for each sprite
-    for (int i = 0; i < spriteCount; ++i) {
+    for (int i = 0; i < ssd.spriteCount; ++i) {
         // for each sprite row
-        for (int j = 0; j < spriteSize; ++j) {
+        for (int j = 0; j < ssd.spriteSize; ++j) {
             // access the pointer to sprite rows in the data.
-            unsigned char* spriteRow = data[i * spriteSize + j];
-            memcpy(sprite + j * spriteSize * 4, spriteRow, spriteSize * 4);
+            unsigned char* spriteRow = ssd.splitSprites[i * ssd.spriteSize + j];
+            memcpy(sprite + j * ssd.spriteSize * 4, spriteRow, ssd.spriteSize * 4);
         }
         // need to check if a sprite is pure alpha (then don't save it)
         bool transparent = true;
-        for (int x = 3; transparent && x < spriteSize * spriteSize * 4; x += 4) {
+        for (int x = 3; transparent && x < ssd.spriteSize * ssd.spriteSize * 4; x += 4) {
             transparent = (0 == sprite[x]);
         }
 
@@ -169,11 +164,11 @@ void SpriteSheetIO::saveObjectSplits(unsigned char** data, const unsigned int sp
             skippedSprites++;
         } else {
             // unsigned char* sprite is now holding a spriteSize * spriteSize * 4 byte sprite. Finally!
-            saveObjectSprite(sprite, i - skippedSprites, spriteSize, lodeState, folderName, jobStats);
+            saveObjectSprite(sprite, i - skippedSprites, ssd.spriteSize, ssd.lodeState, folderName, ssd.stats);
         }
     }
 
-    jobStats.n_skipped += skippedSprites;
+    ssd.stats.n_skipped += skippedSprites;
 
     delete[] sprite;
 }
@@ -206,19 +201,14 @@ void SpriteSheetIO::saveObjectSprite(const unsigned char* sprite, int index, uns
  *
  * Uses 'Character sheet' sprites, i.e. 5 sprites (idle walk walk attack attack). the second attack frame is twice as wide.
  *
- * @param data collection of byte pointers to sprites. Every (spriteSize) pointers constitutes one sprite.
- * @param spriteSize The (normal) size of the sprite.
- * @param spriteCount The amount of sprites that are in the collection.
- * @param lodeState the LodePNG library encoder/decoder state.
- * @param originalFileName the original name of the SpriteSheet these sprites come from.
- * @param jobStats tracking object for sprite splitting stats
+ * @param ssd Struct containing all needed information, see SpriteSplittingData.h
  */
-void SpriteSheetIO::saveCharSplits(unsigned char** data, unsigned int spriteSize, unsigned int spriteCount, lodepng::State& lodeState, const std::string& originalFileName, SpriteSplittingStatus& jobStats) const {
+void SpriteSheetIO::saveCharSplits(SpriteSplittingData& ssd) const {
 
-    std::string folderName = folderNameFromSheetName(originalFileName, SpriteSheetType::CHARACTER);
+    std::string folderName = folderNameFromSheetName(ssd.originalFileName, SpriteSheetType::CHARACTER);
     bool cleanedFolder = createCleanDirectory(folderName);
     if (! cleanedFolder) {
-        jobStats.n_save_error += spriteCount; // mark every sprite as failed
+        ssd.stats.n_save_error += ssd.spriteCount; // mark every sprite as failed
         return;
     }
 
@@ -226,36 +216,37 @@ void SpriteSheetIO::saveCharSplits(unsigned char** data, unsigned int spriteSize
     // then that is perfectly valid. For example, pet skins without attack frames.
     // I suspect Exalt still expects full alpha frames to slot into e.g. a pets attack frames.
     // Therefore, process one entire row of sprites, _then_ decide if it's an alpha (unlike saveObjectSplits, which is on a per-sprite basis)
-    auto* sprite_0 = new unsigned char[spriteSize * spriteSize * 4]; // idle frame
-    auto* sprite_1 = new unsigned char[spriteSize * spriteSize * 4]; // walk frame 1
-    auto* sprite_2 = new unsigned char[spriteSize * spriteSize * 4]; // walk frame 2
-    auto* sprite_3 = new unsigned char[spriteSize * spriteSize * 4]; // attack frame 1
-    auto* sprite_4 = new unsigned char[spriteSize * spriteSize * 4 * 2]; // attack frame 2, twice as wide
+    const unsigned int spriteBytes = ssd.spriteSize * ssd.spriteSize * 4;
+    auto* sprite_0 = new unsigned char[spriteBytes]; // idle frame
+    auto* sprite_1 = new unsigned char[spriteBytes]; // walk frame 1
+    auto* sprite_2 = new unsigned char[spriteBytes]; // walk frame 2
+    auto* sprite_3 = new unsigned char[spriteBytes]; // attack frame 1
+    auto* sprite_4 = new unsigned char[spriteBytes * 2]; // attack frame 2, twice as wide
     unsigned char* charSprites[SPRITES_PER_CHAR] = {sprite_0, sprite_1, sprite_2, sprite_3, sprite_4};
     int skippedSprites = 0;
 
     // for each sprite
-    for (int i = 0; i < spriteCount; ++i) {
+    for (int i = 0; i < ssd.spriteCount; ++i) {
         // fill sprite_0 through sprite_4 with a character
         unsigned char* sprite = charSprites[i % SPRITES_PER_CHAR];
-        for (int j = 0; j < spriteSize; ++j) { //       twice as much when wide sprite!
-            unsigned int spriteWidth = spriteSize * 4 * (sprite == sprite_4 ? 2 : 1);
-            unsigned char* spriteRow = data[i * spriteSize + j];
+        for (int j = 0; j < ssd.spriteSize; ++j) { //       twice as much when wide sprite!
+            unsigned int spriteWidth = ssd.spriteSize * 4 * (sprite == sprite_4 ? 2 : 1);
+            unsigned char* spriteRow = ssd.splitSprites[i * ssd.spriteSize + j];
             memcpy(sprite + j * spriteWidth, spriteRow, spriteWidth);
         }
 
         // sprite_0 through sprite_4 contains a new character. Check if it's all alpha, then save if not.
         if (i % SPRITES_PER_CHAR == SPRITES_PER_CHAR - 1) {
-            if (charSpritesAreAlpha(charSprites, spriteSize, sprite_4)) {
+            if (charSpritesAreAlpha(charSprites, ssd.spriteSize, sprite_4)) {
                 skippedSprites++;
             } else {
                 // unsigned char** charSprites is now holding a chars' sprites. Finally!
-                saveCharSprites(charSprites, (i / SPRITES_PER_CHAR) - skippedSprites, spriteSize, lodeState, folderName, jobStats);
+                saveCharSprites(charSprites, (i / SPRITES_PER_CHAR) - skippedSprites, ssd.spriteSize, ssd.lodeState, folderName, ssd.stats);
             }
         }
     }
 
-    jobStats.n_skipped += skippedSprites;
+    ssd.stats.n_skipped += skippedSprites;
 
     delete[] sprite_0;
     delete[] sprite_1;

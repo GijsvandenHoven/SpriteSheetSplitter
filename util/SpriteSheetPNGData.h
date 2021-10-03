@@ -1,14 +1,14 @@
-#ifndef SPRITESHEETSPLITTER_SPRITESHEETDATA_H
-#define SPRITESHEETSPLITTER_SPRITESHEETDATA_H
+#ifndef SPRITESHEETSPLITTER_SPRITESHEETPNGDATA_H
+#define SPRITESHEETSPLITTER_SPRITESHEETPNGDATA_H
 #include "lodepng.h"
 
-struct SpriteSheetData {
+struct SpriteSheetPNGData {
     unsigned int width;
     unsigned int height;
     unsigned int error;
     lodepng::State lodeState;
 
-    SpriteSheetData() {
+    SpriteSheetPNGData() {
         lodeState.decoder.remember_unknown_chunks = 1; //make it reproduce even unknown chunks in the saved image
         lodeState.encoder.text_compression = 1; // something about better compression? I don't really know. Taken from lodepng/examples/reencode.cpp
         // Splitter DEPENDS on this. It expects to get the pixels in RGBA format, 1 byte each.
@@ -23,4 +23,4 @@ struct SpriteSheetData {
         error = 0;
     }
 };
-#endif //SPRITESHEETSPLITTER_SPRITESHEETDATA_H
+#endif //SPRITESHEETSPLITTER_SPRITESHEETPNGDATA_H

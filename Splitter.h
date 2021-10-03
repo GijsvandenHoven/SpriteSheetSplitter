@@ -4,6 +4,7 @@
 #include "util/SplitterOptions.h"
 #include "IO/SpriteSheetIO.h"
 #include "util/SpriteSplittingStatus.h"
+#include "util/SpriteSplittingData.h"
 
 class Splitter {
 public:
@@ -16,8 +17,8 @@ private:
     void workFolder(int workCap, std::queue<std::string> &pngs, SpriteSplittingStatus &jobStats) const;
     void split(const std::string &fileName, SpriteSplittingStatus &jobStats, std::basic_ostream<char> &outStream) const;
     static bool validSpriteSheet(unsigned int width, unsigned int height, unsigned int columnCount);
-    static void splitObjectSheet(unsigned char* imgData, unsigned int spriteSize, unsigned int spriteCount, unsigned char** out);
-    static void splitCharSheet(unsigned char *imgData, unsigned int spriteSize, unsigned int spriteCount, unsigned char **out);
+    static void splitObjectSheet(SpriteSplittingData& ssd);
+    static void splitCharSheet(SpriteSplittingData& ssd);
 
     // sprite count per row of type
     static const int OBJ_SHEET_ROW = 16;

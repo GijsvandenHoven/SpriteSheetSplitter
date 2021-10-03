@@ -1,6 +1,5 @@
 #include <vector>
 #include <syncstream>
-#include <omp.h>
 #include "Splitter.h"
 #include "util/SimpleTimer.h"
 
@@ -81,14 +80,14 @@ void Splitter::workFolder(int workCap, std::queue<std::string> &pngs, SpriteSpli
 void Splitter::split(const std::string &fileName, SpriteSplittingStatus &jobStats, std::basic_ostream<char> &outStream) const {
     SimpleTimer timer {"Splitting this file", outStream};
     std::vector<unsigned char> img;
-    SpriteSheetData ssd;
+    SpriteSheetPNGData pngData;
 
     outStream << "[INFO] Loading " << fileName << "\n";
 
-    SpriteSheetIO::loadPNG(fileName, img, ssd);
+    SpriteSheetIO::loadPNG(fileName, img, pngData);
 
-    if (ssd.error) {
-        outStream << "[ERROR] LodePNG decode error: " << ssd.error << ". (Most likely a corrupt png)\n"; // if it's an incorrect path at this point then that is a bug!
+    if (pngData.error) {
+        outStream << "[ERROR] LodePNG decode error: " << pngData.error << ". (Most likely a corrupt png)\n"; // if it's an incorrect path at this point then that is a bug!
         jobStats.n_load_error += 1;
         return;
     }
@@ -96,12 +95,12 @@ void Splitter::split(const std::string &fileName, SpriteSplittingStatus &jobStat
     // todo: for types that are not discernible from sheet dimensions alone, this info could be supplied as optional parameter or function overload (latter needs loading routine above moved to dedicated function).
     // todo: Then transform this into something where the default branch is this code, and supplied parameter simply set the type after calling validSpriteSheet.
     SpriteSheetType type;
-    if (validSpriteSheet(ssd.width, ssd.height, OBJ_SHEET_ROW)) {
+    if (validSpriteSheet(pngData.width, pngData.height, OBJ_SHEET_ROW)) {
         type = SpriteSheetType::OBJECT;
-    } else if (validSpriteSheet(ssd.width, ssd.height, CHAR_SHEET_ROW)) {
+    } else if (validSpriteSheet(pngData.width, pngData.height, CHAR_SHEET_ROW)) {
         type = SpriteSheetType::CHARACTER;
     } else {
-        outStream << "[ERROR] An image of size " << ssd.width << ", " << ssd.height << " is not a valid SpriteSheet.\n";
+        outStream << "[ERROR] An image of size " << pngData.width << ", " << pngData.height << " is not a valid SpriteSheet.\n";
         jobStats.n_load_error += 1;
         return;
     }
@@ -110,32 +109,39 @@ void Splitter::split(const std::string &fileName, SpriteSplittingStatus &jobStat
 
     unsigned int spriteSize; // size of a sprite (8, 16, 32..)
     unsigned int spriteCount; // amount of unsigned char* to expect back from splitting.
-    unsigned char** spriteData; // array of SpriteSheet row indices, filled by upcoming split function.
+    // pointer representing the specific function to call splitting on.
+    // This is to prevent allocating spriteData in each switch branch, by doing it after because it always has the same size.
+    // But also preventing the need for calling a generic entry point which then _again_ has a switch on SpriteSheetType.
+    void (*splitFunction)(SpriteSplittingData&);
+
     switch(type) {
         case SpriteSheetType::OBJECT:
-            spriteSize = ssd.width / OBJ_SHEET_ROW;
+            spriteSize = pngData.width / OBJ_SHEET_ROW;
             spriteCount = (img.size() / 4) / (spriteSize * spriteSize);
-            spriteData = new unsigned char* [spriteSize * spriteCount]; // rows per sprite * amount of sprites
-
-            splitObjectSheet(img.data(), spriteSize, spriteCount, spriteData);
-
-            ssio.saveSplits(spriteData, spriteSize, spriteCount, type, ssd.lodeState, fileName, jobStats);
+            // assign the correct function
+            splitFunction = & Splitter::splitObjectSheet;
             break;
         case SpriteSheetType::CHARACTER:
-            spriteSize = ssd.width / CHAR_SHEET_ROW;
+            spriteSize = pngData.width / CHAR_SHEET_ROW;
             // correct for column 3 being empty, and 5+6 being joined (see splitCharSheet function comment)
             spriteCount = ((img.size() / 4) / (spriteSize * spriteSize));
             spriteCount = (spriteCount / CHAR_SHEET_ROW) * (CHAR_SHEET_ROW - 2);
-            spriteData = new unsigned char* [spriteSize * spriteCount]; // rows per sprite * amount of sprites
-
-            splitCharSheet(img.data(), spriteSize, spriteCount, spriteData);
-
-            ssio.saveSplits(spriteData, spriteSize, spriteCount, type, ssd.lodeState, fileName, jobStats);
+            // assign the correct function
+            splitFunction = & Splitter::splitCharSheet;
             break;
         default: // did you add a new type to the enum?
             outStream << "[ERROR] unknown SpriteSheetType" << type << "\n";
             exit(-1);
     }
+
+    // rows per sprite * amount of sprites that fit on the sheet
+    auto spriteData = new unsigned char* [spriteSize * spriteCount];
+    // bundle all these parameters into one struct
+    SpriteSplittingData splitData(img.data(), spriteData, spriteSize, spriteCount, type, pngData.lodeState, fileName, jobStats);
+    // split the sprites
+    (*splitFunction)(splitData);
+    // and save them
+    ssio.saveSplits(splitData);
 
     outStream << "[INFO] Finished splitting SpriteSheet.\n";
 
@@ -149,19 +155,22 @@ void Splitter::split(const std::string &fileName, SpriteSplittingStatus &jobStat
  *
  * Assumes that the collection has enough space allocated to do this (spriteSize * spriteCount).
  *
- * @param imgData pointer to the raw bytes of the SpriteSheet
- * @param spriteSize Size of a single sprite (8,16,32,...)
- * @param spriteCount Amount of sprites that fit on the sheet
- * @param out The collection of pointers to fill.
+ * @param ssd Struct containing all necessary data. See SpriteSplititngData.h.\n
+ *            In particular, these members are used:\n
+ *            ssd.spriteSheet, ssd.spriteSize, ssd.SpriteCount, ssd.splitSprites
  */
-void Splitter::splitObjectSheet(unsigned char* imgData, unsigned int spriteSize, unsigned int spriteCount, unsigned char** out) {
-    // 16 rows, 4 uchar per pixel.
+void Splitter::splitObjectSheet(SpriteSplittingData& ssd) {
+    unsigned char* imgData = ssd.spriteSheet;
+    const unsigned int spriteSize = ssd.spriteSize;
+    const unsigned int spriteCount = ssd.spriteCount;
+    unsigned char** out = ssd.splitSprites;
+    // constant * SZ rows, 4 uchar per pixel.
     unsigned int sheetPixelWidth = spriteSize * OBJ_SHEET_ROW * 4;
 #pragma omp simd collapse(2)
     for (int i = 0; i < spriteCount; ++i) {
         for (int j = 0; j < spriteSize; ++j) {
-            //    (linear index)    =           (sprite row offset)                              + (sprite column offset)             + (pixel row offset)
-            out[i * spriteSize + j] = imgData + (i/OBJ_SHEET_ROW) * spriteSize * sheetPixelWidth + (i%OBJ_SHEET_ROW) * spriteSize * 4 + j * sheetPixelWidth;
+            //    (linear index)    =           (sprite row offset)                                + (sprite column offset)               + (pixel row offset)
+            out[i * spriteSize + j] = imgData + (i / OBJ_SHEET_ROW) * spriteSize * sheetPixelWidth + (i % OBJ_SHEET_ROW) * spriteSize * 4 + j * sheetPixelWidth;
         }
     }
 }
@@ -173,13 +182,11 @@ void Splitter::splitObjectSheet(unsigned char* imgData, unsigned int spriteSize,
  *
  * Assumes that the collection has enough space allocated to do this (spriteSize * spriteCount).
  *
- * @param imgData pointer to the raw bytes of the SpriteSheet
- * @param spriteSize Size of a single sprite (8,16,32,...)
- * @param spriteCount Amount of sprites that fit on the sheet.
- *                    Keep in mind skipped and conjoined columns for Char sheets, the function accounts for this.
- * @param out The collection of pointers to fill.
+ * @param ssd Struct containing all necessary data. See SpriteSplititngData.h.\n
+ *            In particular, these members are used:\n
+ *            ssd.spriteSheet, ssd.spriteSize, ssd.SpriteCount, ssd.splitSprites
  */
-void Splitter::splitCharSheet(unsigned char* imgData, unsigned int spriteSize, unsigned int spriteCount, unsigned char** out) {
+void Splitter::splitCharSheet(SpriteSplittingData& ssd) {
     /* Char sheets are special. They consist of seven columns, where each row belongs to a single char.
      * Column 0 is their idle frame.
      * Column 1 and 2 are their walking frames.
@@ -188,13 +195,17 @@ void Splitter::splitCharSheet(unsigned char* imgData, unsigned int spriteSize, u
      * Column 5 and 6 are joined as one sprite for i.e. an extended arm holding a sword.
      * Meaning all sprites here are square except for the 5th, it is a size x 2size rectangle!
      */
+    unsigned char* imgData = ssd.spriteSheet;
+    const unsigned int spriteSize = ssd.spriteSize;
+    const unsigned int spriteCount = ssd.spriteCount;
+    unsigned char** out = ssd.splitSprites;
     unsigned int sheetPixelWidth = spriteSize * CHAR_SHEET_ROW * 4;
     const int CHARS_PER_ROW = CHAR_SHEET_ROW - 2;
     auto columnOffset = [](int i)->bool { return i % CHARS_PER_ROW >= 3; };
 #pragma omp simd collapse(2)
     for (int i = 0; i < spriteCount; ++i) {
         for (int j = 0; j < spriteSize; ++j) {
-            // linear index         =           (sprite row offset)                                + (sprite column offset + (extra offset, skips column 3))  + (pixel row offset)
+            // linear index         =           (sprite row offset)                                + (sprite col offset   + (skips column 3))                 + (pixel row offset)
             out[i * spriteSize + j] = imgData + (i / CHARS_PER_ROW) * spriteSize * sheetPixelWidth + ((i % CHARS_PER_ROW) + columnOffset(i)) * spriteSize * 4 + j * sheetPixelWidth;
         }
     }

@@ -5,10 +5,11 @@
 #include <queue>
 #include <map>
 #include "lodepng.h"
-#include "../util/SpriteSheetData.h"
+#include "../util/SpriteSheetPNGData.h"
 #include "../util/SpriteSheetType.h"
 #include "../util/CharSheetInfo.h"
 #include "../util/SpriteSplittingStatus.h"
+#include "../util/SpriteSplittingData.h"
 
 namespace fs = std::filesystem;
 
@@ -21,16 +22,16 @@ public:
     bool setInPath(const std::string& pathName, bool shouldBePNG, bool recursive);
     bool setOutPath(const std::string& pathName);
     void fillPNGQueue(std::queue<std::string>& q);
-    static unsigned int loadPNG(const std::string& fileName, std::vector<unsigned char> &buffer, SpriteSheetData& data);
-    void saveSplits(unsigned char** data, unsigned int spriteSize, unsigned int spriteCount, SpriteSheetType& type, lodepng::State& lodeState, const std::string& originalFileName, SpriteSplittingStatus& jobStats) const;
+    static unsigned int loadPNG(const std::string& fileName, std::vector<unsigned char> &buffer, SpriteSheetPNGData& data);
+    void saveSplits(SpriteSplittingData& ssd) const;
 
 private:
     fs::path inFilePath_;
     fs::path outFilePath_;
     ignorant_directory_iterator* directoryIterator_ = nullptr;
     [[nodiscard]] bool createCleanDirectory(const std::string& dir) const;
-    void saveObjectSplits(unsigned char** data, unsigned int spriteSize, unsigned int spriteCount, lodepng::State& lodeState, const std::string& originalFileName, SpriteSplittingStatus& jobStats) const;
-    void saveCharSplits(unsigned char** data, unsigned int spriteSize, unsigned int spriteCount, lodepng::State& lodeState, const std::string& originalFileName, SpriteSplittingStatus& jobStats) const;
+    void saveObjectSplits(SpriteSplittingData& ssd) const;
+    void saveCharSplits(SpriteSplittingData& ssd) const;
     void saveObjectSprite(const unsigned char* sprite, int index, unsigned int spriteSize, lodepng::State& lodeState, const std::string& folderName, SpriteSplittingStatus& jobStats) const;
     void saveCharSprites(unsigned char* sprites [SPRITES_PER_CHAR], int index, unsigned int spriteSize, lodepng::State& lodeState, const std::string& folderName, SpriteSplittingStatus& jobStats) const;
     static bool charSpritesAreAlpha(unsigned char* sprites [SPRITES_PER_CHAR], unsigned int spriteSize, const unsigned char* elongatedSprite);

@@ -114,12 +114,11 @@ unsigned int SpriteSheetIO::loadPNG(const std::string& fileName, std::vector<uns
  * @param spriteCount the amount of sprites in the collection.
  * @param lodeState the LodePNG library 'State' object, used for encoding and decoding files.
  * @param originalFileName the name of the SpriteSheet these bytes originally came from.
- * @return the amount of errors (todo: success and fail and alpha(?) struct)
+ * @param jobStats tracking object for sprite splitting stats
  */
-unsigned int SpriteSheetIO::saveObjectSplits(unsigned char** data, const unsigned int spriteSize, const unsigned int spriteCount, lodepng::State& lodeState, const std::string& originalFileName) {
+void SpriteSheetIO::saveObjectSplits(unsigned char** data, const unsigned int spriteSize, const unsigned int spriteCount, lodepng::State& lodeState, const std::string& originalFileName, SpriteSplittingStatus& jobStats) {
     auto* sprite = new unsigned char[spriteSize * spriteSize * 4];
     int skippedSprites = 0;
-    unsigned int error = 0;
     std::string folderName = folderNameFromSheetName(originalFileName, SpriteSheetType::OBJECT);
     // for each sprite
     for (int i = 0; i < spriteCount; ++i) {
@@ -130,22 +129,22 @@ unsigned int SpriteSheetIO::saveObjectSplits(unsigned char** data, const unsigne
             memcpy(sprite + j * spriteSize * 4, spriteRow, spriteSize * 4);
         }
         // need to check if a sprite is pure alpha (then don't save it)
-        uint32_t alpha = 0; // safe to add with until square sprites of size 2^31
-#pragma omp simd reduction(+:alpha)
-        for (int x = 3; x < spriteSize * spriteSize * 4; x += 4) {
-            alpha += sprite[x];
+        bool transparent = true;
+        for (int x = 3; transparent && x < spriteSize * spriteSize * 4; x += 4) {
+            transparent = (0 == sprite[x]);
         }
 
-        if (alpha == 0) {
+        if (transparent) {
             skippedSprites++;
         } else {
             // unsigned char* sprite is now holding a spriteSize * spriteSize * 4 byte sprite. Finally!
-            error += saveObjectSprite(sprite, i - skippedSprites, spriteSize, lodeState, folderName);
+            saveObjectSprite(sprite, i - skippedSprites, spriteSize, lodeState, folderName, jobStats);
         }
     }
-    delete[] sprite;
 
-    return error;
+    jobStats.n_skipped += skippedSprites;
+
+    delete[] sprite;
 }
 
 /**
@@ -156,9 +155,9 @@ unsigned int SpriteSheetIO::saveObjectSplits(unsigned char** data, const unsigne
  * @param spriteSize the size of the sprite
  * @param lodeState the LodePNG library encoder/decoder State.
  * @param folderName the name of the folder this should go into. An absolute path (using outFilePath_ and index) is generated.
- * @return whether or not saving the sprite was successful.
+ * @param jobStats tracking object for sprite splitting stats
  */
-bool SpriteSheetIO::saveObjectSprite(const unsigned char* sprite, int index, unsigned int spriteSize, lodepng::State& lodeState, const std::string& folderName) {
+void SpriteSheetIO::saveObjectSprite(const unsigned char* sprite, int index, unsigned int spriteSize, lodepng::State& lodeState, const std::string& folderName, SpriteSplittingStatus& jobStats) {
     bool error = false;
 
     if (! fs::exists(outFilePath_/folderName)) {
@@ -171,10 +170,14 @@ bool SpriteSheetIO::saveObjectSprite(const unsigned char* sprite, int index, uns
         error = lodepng::encode(encodedPixels, sprite, spriteSize, spriteSize, lodeState);
         if (!error) {
             error = lodepng::save_file(encodedPixels, (outFilePath_/folderName/fileName).string());
+            jobStats.n_save_error +=    error;
+            jobStats.n_success +=       ! error;
         }
+    } else { // failed to create the directory. Count as saving failure. Probably will accumulate every single file in the sheet as fail.
+        jobStats.n_save_error++;
     }
 
-    return error;
+
 }
 
 /**
@@ -187,9 +190,9 @@ bool SpriteSheetIO::saveObjectSprite(const unsigned char* sprite, int index, uns
  * @param spriteCount The amount of sprites that are in the collection.
  * @param lodeState the LodePNG library encoder/decoder state.
  * @param originalFileName the original name of the SpriteSheet these sprites come from.
- * @return the amount of sprites that failed to save.
+ * @param jobStats tracking object for sprite splitting stats
  */
-unsigned int SpriteSheetIO::saveCharSplits(unsigned char** data, unsigned int spriteSize, unsigned int spriteCount, lodepng::State& lodeState, const std::string& originalFileName) {
+void SpriteSheetIO::saveCharSplits(unsigned char** data, unsigned int spriteSize, unsigned int spriteCount, lodepng::State& lodeState, const std::string& originalFileName, SpriteSplittingStatus& jobStats) {
     // for char sheets, one row = one character. If there exists invisible frames on that row (but not all are invisible),
     // then that is perfectly valid. For example, pet skins without attack frames.
     // I suspect Exalt still expects full alpha frames to slot into e.g. a pets attack frames.
@@ -202,16 +205,15 @@ unsigned int SpriteSheetIO::saveCharSplits(unsigned char** data, unsigned int sp
     unsigned char* charSprites[SPRITES_PER_CHAR] = {sprite_0, sprite_1, sprite_2, sprite_3, sprite_4};
 
     int skippedSprites = 0;
-    unsigned int error = 0;
 
     std::string folderName = folderNameFromSheetName(originalFileName, SpriteSheetType::CHARACTER);
     // for each sprite
     for (int i = 0; i < spriteCount; ++i) {
         // fill sprite_0 through sprite_4 with a character
         unsigned char* sprite = charSprites[i % SPRITES_PER_CHAR];
-        for (int j = 0; j < spriteSize; ++j) {
+        for (int j = 0; j < spriteSize; ++j) { //       twice as much when wide sprite!
             unsigned int spriteWidth = spriteSize * 4 * (sprite == sprite_4 ? 2 : 1);
-            unsigned char* spriteRow = data[i * spriteSize + j]; //                    twice as much when wide sprite.
+            unsigned char* spriteRow = data[i * spriteSize + j];
             memcpy(sprite + j * spriteWidth, spriteRow, spriteWidth);
         }
 
@@ -221,18 +223,18 @@ unsigned int SpriteSheetIO::saveCharSplits(unsigned char** data, unsigned int sp
                 skippedSprites++;
             } else {
                 // unsigned char** charSprites is now holding a chars' sprites. Finally!
-                error += saveCharSprites(charSprites, (i / SPRITES_PER_CHAR) - skippedSprites, spriteSize, lodeState, folderName);
+                saveCharSprites(charSprites, (i / SPRITES_PER_CHAR) - skippedSprites, spriteSize, lodeState, folderName, jobStats);
             }
         }
     }
+
+    jobStats.n_skipped += skippedSprites;
 
     delete[] sprite_0;
     delete[] sprite_1;
     delete[] sprite_2;
     delete[] sprite_3;
     delete[] sprite_4;
-
-    return error;
 }
 
 /**
@@ -242,11 +244,10 @@ unsigned int SpriteSheetIO::saveCharSplits(unsigned char** data, unsigned int sp
  * @param spriteSize size of the (base) sprite
  * @param lodeState LodePNG Library encoder/decoder state
  * @param folderName the name of the folder this should go into. An absolute path (using outFilePath_ and index) is generated.
- * @return the amount of sprites that failed to save.
+ * @param jobStats tracking object for sprite splitting stats
  */
-unsigned int SpriteSheetIO::saveCharSprites(unsigned char *sprites [SPRITES_PER_CHAR], int index, unsigned int spriteSize, lodepng::State &lodeState, const std::string &folderName) {
-    unsigned int error = 0;
-    bool singleError;
+void SpriteSheetIO::saveCharSprites(unsigned char *sprites [SPRITES_PER_CHAR], int index, unsigned int spriteSize, lodepng::State &lodeState, const std::string &folderName, SpriteSplittingStatus& jobStats) {
+    bool error = false;
 
     if (! fs::exists(outFilePath_/folderName)) {
         error = ! fs::create_directory(outFilePath_/folderName); // returns true when success
@@ -263,15 +264,20 @@ unsigned int SpriteSheetIO::saveCharSprites(unsigned char *sprites [SPRITES_PER_
             std::string fileName = baseFileName + kvp.second + ".png"; // index_descriptor.png format needed
 
             std::vector<unsigned char> encodedPixels;
-            singleError = lodepng::encode(encodedPixels, sprites[spriteIndex], width, spriteSize, lodeState);
-            if (!singleError) {
-                singleError = lodepng::save_file(encodedPixels, (outFilePath_/folderName/fileName).string());
+            error = lodepng::encode(encodedPixels, sprites[spriteIndex], width, spriteSize, lodeState);
+
+            if (error) { // log the failure
+                jobStats.n_save_error++;
+            } else {
+                error = lodepng::save_file(encodedPixels, (outFilePath_/folderName/fileName).string());
+                jobStats.n_save_error +=    error;
+                jobStats.n_success +=       ! error;
             }
-            error += singleError; // discards error codes, just counts failures.
         }
+    } else { // failed to create the directory. Count each sprite as an individual fail
+        jobStats.n_save_error += CHAR_SHEET_TYPE_TO_NAME.size();
     }
 
-    return error;
 }
 
 /**
@@ -282,16 +288,15 @@ unsigned int SpriteSheetIO::saveCharSprites(unsigned char *sprites [SPRITES_PER_
  * @return whether or not the character is fully alpha.
  */
 bool SpriteSheetIO::charSpritesAreAlpha(unsigned char* sprites [SPRITES_PER_CHAR], const unsigned int spriteSize, const unsigned char* elongatedSprite) {
-    int alpha = 0;
+    bool transparent = true;
     for (int i = 0; i < SPRITES_PER_CHAR; ++i) {
         const unsigned char* inspectedSprite = sprites[i];
-#pragma omp simd reduction(+:alpha)
-        for (int j = 3; j < spriteSize * spriteSize * 4 * (inspectedSprite == elongatedSprite ? 2 : 1); j += 4) {
-            alpha += inspectedSprite[j];
+        for (int j = 3; transparent && j < spriteSize * spriteSize * 4 * (inspectedSprite == elongatedSprite ? 2 : 1); j += 4) {
+            transparent = (0 == inspectedSprite[j]);
         }
     }
 
-    return alpha == 0;
+    return transparent;
 }
 
 /**

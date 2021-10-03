@@ -5,7 +5,9 @@
 #include "Splitter.h"
 
 void Splitter::work(std::vector <SplitterOpts> &jobs) {
-    unsigned int completedCount = 0;
+    SpriteSplittingStatus jobStats{};
+
+    int jobCounter = 0;
     for (auto& job : jobs) {
         // todo: to really push the concurrency, any job could be its own process.
         bool inPathOK = ssio.setInPath(job.inDirectory, job.isPNGInDirectory, job.recursive);
@@ -18,36 +20,42 @@ void Splitter::work(std::vector <SplitterOpts> &jobs) {
 
         if (job.isPNGInDirectory) {
             std::string& onlyFile = pngQueue.front();
-            completedCount += split(onlyFile, std::cout);
+            split(onlyFile, jobStats, std::cout);
             pngQueue.pop();
         } else {
-            completedCount += workFolder(job.workAmount, pngQueue);
+            workFolder(job.workAmount, pngQueue, jobStats);
         }
+
+        std::cout << "DONE with job " << ++jobCounter << " out of " << jobs.size() << "\n";
     }
+
+    std::cout << jobStats;
 }
 
 /**
- * Given a queue of SpriteSheet file paths (typically ones from a folder generated via SpriteSheetIO::fillPNGQueue),
+ * todo
  * @param workCap
  * @param pngs
- * @return
+ * @param jobStats
  */
-unsigned int Splitter::workFolder(int workCap, std::queue<std::string>& pngs) {
-    unsigned int completedCount = 0;
+void Splitter::workFolder(int workCap, std::queue<std::string> &pngs, SpriteSplittingStatus &jobStats) {
+
+    // todo: transform to forloop, pragma omp parallel for
     while (workCap-- > 0 && ! pngs.empty()) {
-        std::string& file = pngs.front();
+        std::string& file = pngs.front(); // todo pragma omp atomic
         // for printing without data races. Downside, only prints when the object is destroyed (end of loop iteration).
         std::osyncstream synced_out(std::cout);
-        // todo: threading goes here
-        completedCount = split(file, synced_out);
+
+        SpriteSplittingStatus individualJobStats{};
+        split(file, individualJobStats, synced_out);
 
         // remove from queue after being done with the string
         pngs.pop();
+        // update status todo: pragma omp atomic
+        jobStats += individualJobStats;
     }
 
     // wait for all threads to end.
-
-    return completedCount;
 }
 
 /**
@@ -60,9 +68,9 @@ unsigned int Splitter::workFolder(int workCap, std::queue<std::string>& pngs) {
  *
  * @param fileName A path to a .png SpriteSheet file.
  * @param outStream stream for printing characters. Normally std::cout, but could be std::osyncstream from threading.
- * @return The amount of sprites successfully created from splitting. todo: not correct, counts alphas. Make success + fail struct.
+ * @param jobStats struct for counting stats of splitting.
  */
-unsigned int Splitter::split(const std::string &fileName, std::basic_ostream<char>& outStream) {
+void Splitter::split(const std::string &fileName, SpriteSplittingStatus &jobStats, std::basic_ostream<char> &outStream) {
     std::vector<unsigned char> img;
     SpriteSheetData ssd;
 
@@ -72,25 +80,28 @@ unsigned int Splitter::split(const std::string &fileName, std::basic_ostream<cha
 
     if (ssd.error) {
         outStream << "[ERROR] LodePNG decode error: " << ssd.error << ". (Most likely a corrupt png)\n"; // if it's an incorrect path at this point then that is a bug!
-        return false;
+        jobStats.n_load_error += 1;
+        return;
     }
 
+    // todo: for types that are not discernible from sheet dimensions alone, this info could be supplied as optional parameter or function overload (latter needs loading routine above moved to dedicated function).
+    // todo: Then transform this into something where the default branch is this code, and supplied parameter simply set the type after calling validSpriteSheet.
     SpriteSheetType type;
     if (validSpriteSheet(ssd.width, ssd.height, OBJ_SHEET_ROW)) {
         type = SpriteSheetType::OBJECT;
-        outStream << "Detected as Object sheet.\n";
     } else if (validSpriteSheet(ssd.width, ssd.height, CHAR_SHEET_ROW)) {
         type = SpriteSheetType::CHARACTER;
-        outStream << "Detected as Char sheet\n";
     } else {
         outStream << "[ERROR] An image of size " << ssd.width << ", " << ssd.height << " is not a valid SpriteSheet.\n";
-        return false;
+        jobStats.n_load_error += 1;
+        return;
     }
+
+    outStream << "[INFO] Processing file as " << type << " sheet\n";
 
     unsigned int spriteSize; // size of a sprite (8, 16, 32..)
     unsigned int spriteCount; // amount of unsigned char* to expect back from splitting.
     unsigned char** spriteData; // array of SpriteSheet row indices, filled by upcoming split function.
-    unsigned int errorCount;
     switch(type) {
         case SpriteSheetType::OBJECT:
             spriteSize = ssd.width / OBJ_SHEET_ROW;
@@ -99,7 +110,7 @@ unsigned int Splitter::split(const std::string &fileName, std::basic_ostream<cha
 
             splitObjectSheet(img.data(), spriteSize, spriteCount, spriteData);
 
-            errorCount = ssio.saveObjectSplits(spriteData, spriteSize, spriteCount, ssd.lodeState, fileName);
+            ssio.saveObjectSplits(spriteData, spriteSize, spriteCount, ssd.lodeState, fileName, jobStats);
             break;
         case SpriteSheetType::CHARACTER:
             spriteSize = ssd.width / CHAR_SHEET_ROW;
@@ -110,20 +121,16 @@ unsigned int Splitter::split(const std::string &fileName, std::basic_ostream<cha
 
             splitCharSheet(img.data(), spriteSize, spriteCount, spriteData);
 
-            errorCount = ssio.saveCharSplits(spriteData, spriteSize, spriteCount, ssd.lodeState, fileName);
+            ssio.saveCharSplits(spriteData, spriteSize, spriteCount, ssd.lodeState, fileName, jobStats);
             break;
         default: // did you add a new type to the enum?
             outStream << "[ERROR] unknown SpriteSheetType" << type << "\n";
             exit(-1);
     }
 
-    if (errorCount > 0) {
-        outStream << "[WARNING] failed to split " << errorCount << " out of " << spriteCount << " sprites for:\n\t\t" << fileName << "\n";
-    }
+    outStream << "[INFO] Finished splitting SpriteSheet.\n";
 
     delete[] spriteData;
-
-    return spriteCount - errorCount;
 }
 
 /**

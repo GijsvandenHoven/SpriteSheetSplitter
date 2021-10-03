@@ -92,8 +92,8 @@ void Splitter::split(const std::string &fileName, SpriteSplittingStatus &jobStat
         return;
     }
 
-    // todo: for types that are not discernible from sheet dimensions alone, this info could be supplied as optional parameter or function overload (latter needs loading routine above moved to dedicated function).
-    // todo: Then transform this into something where the default branch is this code, and supplied parameter simply set the type after calling validSpriteSheet.
+    // Note to self: for types that are not discernible from sheet dimensions alone, this info could be supplied as optional parameter or function overload (latter needs loading routine above moved to dedicated function).
+    // Then transform this into something where the default branch is this code, and supplied parameter simply set the type after calling validSpriteSheet of some dimension.
     SpriteSheetType type;
     if (validSpriteSheet(pngData.width, pngData.height, OBJ_SHEET_ROW)) {
         type = SpriteSheetType::OBJECT;

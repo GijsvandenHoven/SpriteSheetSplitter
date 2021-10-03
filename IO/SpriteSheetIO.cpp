@@ -91,7 +91,7 @@ void SpriteSheetIO::fillPNGQueue(std::queue<std::string> &q) {
  * @param data struct containing metadata from the SpriteSheet, like dimensions and lodePNG decode state.
  * @return error code from lodePNG (0 = OK)
  */
-unsigned int SpriteSheetIO::loadPNG(const std::string& fileName, std::vector<unsigned char> &buffer, SpriteSheetData& data) {
+unsigned int SpriteSheetIO::loadPNG(const std::string& fileName, std::vector<unsigned char> &buffer, SpriteSheetPNGData& data) {
     unsigned int& error = data.error;
     std::vector<unsigned char> encodedPixelBuffer;
 
@@ -102,6 +102,30 @@ unsigned int SpriteSheetIO::loadPNG(const std::string& fileName, std::vector<uns
 }
 
 /**
+ * Generic entry point for saving a type of splits. Calls the correct saving method depending on the given SpriteSheetType.
+ * @param data the split sprite data
+ * @param spriteSize the size of the sprite (height in type of charsprites due to 2nd attack frame)
+ * @param spriteCount amount of sprites
+ * @param type type of SpriteSheet (e.g. object, char)
+ * @param lodeState LodePNG Library state for encoding/decoding.
+ * @param originalFileName FileName of the spriteSheet these splits came from
+ * @param jobStats tracking object for splitting.
+ */
+void SpriteSheetIO::saveSplits(SpriteSplittingData& ssd) const {
+    switch (ssd.sheetType) {
+        case SpriteSheetType::OBJECT:
+            saveObjectSplits(ssd);
+            break;
+        case SpriteSheetType::CHARACTER:
+            saveCharSplits(ssd);
+            break;
+        default: // did you add a new SpriteSheetType?
+            std::cout << "[ERROR]: Unknown SpriteSheetType " << ssd.sheetType << "\n"; // is at risk of being mangled in printing due to multithreading, but given this is a 'developer only' error, I think that is OK. No need to supply the synced outstream or create one.
+            exit(-1);
+    }
+}
+
+/**
  * Given a sprite amount and size,
  * saves a given collection of byte pointers as single sprite files on disk,
  * based on the LodePNGState and name of the original SpriteSheet.
@@ -109,28 +133,36 @@ unsigned int SpriteSheetIO::loadPNG(const std::string& fileName, std::vector<uns
  * Every byte pointer in the collection points to a (spriteSize) sized row of RGBA bytes.
  * Assumes every sprite is a square shape.
  *
- * @param data the collection of byte pointers
- * @param spriteSize the (square) size of the sprite
- * @param spriteCount the amount of sprites in the collection.
- * @param lodeState the LodePNG library 'State' object, used for encoding and decoding files.
- * @param originalFileName the name of the SpriteSheet these bytes originally came from.
- * @param jobStats tracking object for sprite splitting stats
+ * @param ssd Struct containing all needed information, see SpriteSplittingData.h\n
+ *            In particular, the following is used:\n
+ *            spriteSize: size of a sprite (both width and height)
+ *            spriteCount: amount of sprites
+ *            splitSprites: collection of byte pointers to rows of RGBA pixels. [spriteSize] pointers per sprite.
+ *            originalFileName: name of the SpriteSheet the splits originate from
+ *            stats: stat tracking object
  */
-void SpriteSheetIO::saveObjectSplits(unsigned char** data, const unsigned int spriteSize, const unsigned int spriteCount, lodepng::State& lodeState, const std::string& originalFileName, SpriteSplittingStatus& jobStats) const {
-    auto* sprite = new unsigned char[spriteSize * spriteSize * 4];
+void SpriteSheetIO::saveObjectSplits(SpriteSplittingData& ssd) const {
+
+    std::string folderName = folderNameFromSheetName(ssd.originalFileName, SpriteSheetType::OBJECT);
+    bool cleanedFolder = createCleanDirectory(folderName);
+    if (! cleanedFolder) {
+        ssd.stats.n_save_error += ssd.spriteCount; // mark every sprite as failed.
+        return;
+    }
+
+    auto* sprite = new unsigned char[ssd.spriteSize * ssd.spriteSize * 4];
     int skippedSprites = 0;
-    std::string folderName = folderNameFromSheetName(originalFileName, SpriteSheetType::OBJECT);
     // for each sprite
-    for (int i = 0; i < spriteCount; ++i) {
+    for (int i = 0; i < ssd.spriteCount; ++i) {
         // for each sprite row
-        for (int j = 0; j < spriteSize; ++j) {
+        for (int j = 0; j < ssd.spriteSize; ++j) {
             // access the pointer to sprite rows in the data.
-            unsigned char* spriteRow = data[i * spriteSize + j];
-            memcpy(sprite + j * spriteSize * 4, spriteRow, spriteSize * 4);
+            unsigned char* spriteRow = ssd.splitSprites[i * ssd.spriteSize + j];
+            memcpy(sprite + j * ssd.spriteSize * 4, spriteRow, ssd.spriteSize * 4);
         }
         // need to check if a sprite is pure alpha (then don't save it)
         bool transparent = true;
-        for (int x = 3; transparent && x < spriteSize * spriteSize * 4; x += 4) {
+        for (int x = 3; transparent && x < ssd.spriteSize * ssd.spriteSize * 4; x += 4) {
             transparent = (0 == sprite[x]);
         }
 
@@ -138,11 +170,13 @@ void SpriteSheetIO::saveObjectSplits(unsigned char** data, const unsigned int sp
             skippedSprites++;
         } else {
             // unsigned char* sprite is now holding a spriteSize * spriteSize * 4 byte sprite. Finally!
-            saveObjectSprite(sprite, i - skippedSprites, spriteSize, lodeState, folderName, jobStats);
+            bool error = saveObjectSprite(sprite, i - skippedSprites, ssd.spriteSize, ssd.lodeState, folderName);
+            ssd.stats.n_save_error +=   error;
+            ssd.stats.n_success +=      ! error;
         }
     }
 
-    jobStats.n_skipped += skippedSprites;
+    ssd.stats.n_skipped += skippedSprites;
 
     delete[] sprite;
 }
@@ -155,29 +189,20 @@ void SpriteSheetIO::saveObjectSplits(unsigned char** data, const unsigned int sp
  * @param spriteSize the size of the sprite
  * @param lodeState the LodePNG library encoder/decoder State.
  * @param folderName the name of the folder this should go into. An absolute path (using outFilePath_ and index) is generated.
- * @param jobStats tracking object for sprite splitting stats
+ *
+ * @return whether an error ocurred.
  */
-void SpriteSheetIO::saveObjectSprite(const unsigned char* sprite, int index, unsigned int spriteSize, lodepng::State& lodeState, const std::string& folderName, SpriteSplittingStatus& jobStats) const {
-    bool error = false;
+bool SpriteSheetIO::saveObjectSprite(const unsigned char* sprite, int index, unsigned int spriteSize, lodepng::State& lodeState, const std::string& folderName) const {
+    bool error;
+    std::string fileName = std::to_string(index) + ".png";
+    std::vector<unsigned char> encodedPixels;
 
-    if (! fs::exists(outFilePath_/folderName)) {
-        error = ! fs::create_directory(outFilePath_/folderName); // returns true when success
-    }
-
+    error = lodepng::encode(encodedPixels, sprite, spriteSize, spriteSize, lodeState);
     if (!error) {
-        std::string fileName = std::to_string(index) + ".png";
-        std::vector<unsigned char> encodedPixels;
-        error = lodepng::encode(encodedPixels, sprite, spriteSize, spriteSize, lodeState);
-        if (!error) {
-            error = lodepng::save_file(encodedPixels, (outFilePath_/folderName/fileName).string());
-            jobStats.n_save_error +=    error;
-            jobStats.n_success +=       ! error;
-        }
-    } else { // failed to create the directory. Count as saving failure. Probably will accumulate every single file in the sheet as fail.
-        jobStats.n_save_error++;
+        error = lodepng::save_file(encodedPixels, (outFilePath_/folderName/fileName).string());
     }
 
-
+    return error;
 }
 
 /**
@@ -185,50 +210,61 @@ void SpriteSheetIO::saveObjectSprite(const unsigned char* sprite, int index, uns
  *
  * Uses 'Character sheet' sprites, i.e. 5 sprites (idle walk walk attack attack). the second attack frame is twice as wide.
  *
- * @param data collection of byte pointers to sprites. Every (spriteSize) pointers constitutes one sprite.
- * @param spriteSize The (normal) size of the sprite.
- * @param spriteCount The amount of sprites that are in the collection.
- * @param lodeState the LodePNG library encoder/decoder state.
- * @param originalFileName the original name of the SpriteSheet these sprites come from.
- * @param jobStats tracking object for sprite splitting stats
+ * @param ssd Struct containing all needed information, see SpriteSplittingData.h\n
+ *            In particular, the following is used:\n
+ *            spriteSize: size of a sprite (amount of rows is consistent for char, width is not)
+ *            spriteCount: amount of sprites
+ *            splitSprites: collection of byte pointers to rows of RGBA pixels. [spriteSize] pointers per sprite.
+ *            originalFileName: name of the SpriteSheet the splits originate from
+ *            stats: stat tracking object
+ *
  */
-void SpriteSheetIO::saveCharSplits(unsigned char** data, unsigned int spriteSize, unsigned int spriteCount, lodepng::State& lodeState, const std::string& originalFileName, SpriteSplittingStatus& jobStats) const {
+void SpriteSheetIO::saveCharSplits(SpriteSplittingData& ssd) const {
+
+    std::string folderName = folderNameFromSheetName(ssd.originalFileName, SpriteSheetType::CHARACTER);
+    bool cleanedFolder = createCleanDirectory(folderName);
+    if (! cleanedFolder) {
+        ssd.stats.n_save_error += ssd.spriteCount; // mark every sprite as failed
+        return;
+    }
+
     // for char sheets, one row = one character. If there exists invisible frames on that row (but not all are invisible),
     // then that is perfectly valid. For example, pet skins without attack frames.
     // I suspect Exalt still expects full alpha frames to slot into e.g. a pets attack frames.
     // Therefore, process one entire row of sprites, _then_ decide if it's an alpha (unlike saveObjectSplits, which is on a per-sprite basis)
-    auto* sprite_0 = new unsigned char[spriteSize * spriteSize * 4]; // idle frame
-    auto* sprite_1 = new unsigned char[spriteSize * spriteSize * 4]; // walk frame 1
-    auto* sprite_2 = new unsigned char[spriteSize * spriteSize * 4]; // walk frame 2
-    auto* sprite_3 = new unsigned char[spriteSize * spriteSize * 4]; // attack frame 1
-    auto* sprite_4 = new unsigned char[spriteSize * spriteSize * 4 * 2]; // attack frame 2, twice as wide
+    const unsigned int spriteBytes = ssd.spriteSize * ssd.spriteSize * 4;
+    auto* sprite_0 = new unsigned char[spriteBytes]; // idle frame
+    auto* sprite_1 = new unsigned char[spriteBytes]; // walk frame 1
+    auto* sprite_2 = new unsigned char[spriteBytes]; // walk frame 2
+    auto* sprite_3 = new unsigned char[spriteBytes]; // attack frame 1
+    auto* sprite_4 = new unsigned char[spriteBytes * 2]; // attack frame 2, twice as wide
     unsigned char* charSprites[SPRITES_PER_CHAR] = {sprite_0, sprite_1, sprite_2, sprite_3, sprite_4};
-
     int skippedSprites = 0;
 
-    std::string folderName = folderNameFromSheetName(originalFileName, SpriteSheetType::CHARACTER);
     // for each sprite
-    for (int i = 0; i < spriteCount; ++i) {
+    for (int i = 0; i < ssd.spriteCount; ++i) {
         // fill sprite_0 through sprite_4 with a character
         unsigned char* sprite = charSprites[i % SPRITES_PER_CHAR];
-        for (int j = 0; j < spriteSize; ++j) { //       twice as much when wide sprite!
-            unsigned int spriteWidth = spriteSize * 4 * (sprite == sprite_4 ? 2 : 1);
-            unsigned char* spriteRow = data[i * spriteSize + j];
+        for (int j = 0; j < ssd.spriteSize; ++j) { //       twice as much when wide sprite!
+            unsigned int spriteWidth = ssd.spriteSize * 4 * (sprite == sprite_4 ? 2 : 1);
+            unsigned char* spriteRow = ssd.splitSprites[i * ssd.spriteSize + j];
             memcpy(sprite + j * spriteWidth, spriteRow, spriteWidth);
         }
 
         // sprite_0 through sprite_4 contains a new character. Check if it's all alpha, then save if not.
         if (i % SPRITES_PER_CHAR == SPRITES_PER_CHAR - 1) {
-            if (charSpritesAreAlpha(charSprites, spriteSize, sprite_4)) {
+            if (charSpritesAreAlpha(charSprites, ssd.spriteSize, sprite_4)) {
                 skippedSprites++;
             } else {
                 // unsigned char** charSprites is now holding a chars' sprites. Finally!
-                saveCharSprites(charSprites, (i / SPRITES_PER_CHAR) - skippedSprites, spriteSize, lodeState, folderName, jobStats);
+                unsigned int errors = saveCharSprites(charSprites, (i / SPRITES_PER_CHAR) - skippedSprites, ssd.spriteSize, ssd.lodeState, folderName);
+                ssd.stats.n_save_error += errors;
+                ssd.stats.n_success += static_cast<unsigned int>(SPRITES_PER_CHAR) - errors;
             }
         }
     }
 
-    jobStats.n_skipped += skippedSprites;
+    ssd.stats.n_skipped += skippedSprites;
 
     delete[] sprite_0;
     delete[] sprite_1;
@@ -243,40 +279,34 @@ void SpriteSheetIO::saveCharSplits(unsigned char** data, unsigned int spriteSize
  * @param index Used for naming. e.g. index 3 is called 3_[character_frame_name].png
  * @param spriteSize size of the (base) sprite
  * @param lodeState LodePNG Library encoder/decoder state
- * @param folderName the name of the folder this should go into. An absolute path (using outFilePath_ and index) is generated.
+ * @param folderName the name of the folder this should go into. The folder is assumed to exist.
  * @param jobStats tracking object for sprite splitting stats
+ *
+ * @return number of errors that occurred.
  */
-void SpriteSheetIO::saveCharSprites(unsigned char *sprites [SPRITES_PER_CHAR], int index, unsigned int spriteSize, lodepng::State &lodeState, const std::string &folderName, SpriteSplittingStatus& jobStats) const {
-    bool error = false;
+unsigned int SpriteSheetIO::saveCharSprites(unsigned char *sprites [SPRITES_PER_CHAR], int index, unsigned int spriteSize, lodepng::State &lodeState, const std::string &folderName) const {
+    bool error; // handily casts away error codes from lodePNG to just "error Y/N". this is intended.
+    unsigned int errorCount = 0;
+    std::string baseFileName = std::to_string(index) + '_';
 
-    if (! fs::exists(outFilePath_/folderName)) {
-        error = ! fs::create_directory(outFilePath_/folderName); // returns true when success
-    }
+    for (const auto& kvp : CHAR_SHEET_TYPE_TO_NAME) {
 
-    if (!error) {
-        std::string baseFileName = std::to_string(index) + '_';
+        int spriteIndex = to_integral(kvp.first);
+        unsigned int width = spriteIndex == CharSheetInfo::ATTACK_2 ? (2 * spriteSize) : spriteSize; // attack2 is twice as wide!
 
-        for (const auto& kvp : CHAR_SHEET_TYPE_TO_NAME) {
+        std::string fileName = baseFileName + kvp.second + ".png"; // index_descriptor.png format needed
 
-            int spriteIndex = to_integral(kvp.first);
-            unsigned int width = spriteIndex == CharSheetInfo::ATTACK_2 ? (2 * spriteSize) : spriteSize; // attack2 is twice as wide!
+        std::vector<unsigned char> encodedPixels;
+        error = lodepng::encode(encodedPixels, sprites[spriteIndex], width, spriteSize, lodeState);
 
-            std::string fileName = baseFileName + kvp.second + ".png"; // index_descriptor.png format needed
-
-            std::vector<unsigned char> encodedPixels;
-            error = lodepng::encode(encodedPixels, sprites[spriteIndex], width, spriteSize, lodeState);
-
-            if (error) { // log the failure
-                jobStats.n_save_error++;
-            } else {
-                error = lodepng::save_file(encodedPixels, (outFilePath_/folderName/fileName).string());
-                jobStats.n_save_error +=    error;
-                jobStats.n_success +=       ! error;
-            }
+        if (!error) {
+            error = lodepng::save_file(encodedPixels, (outFilePath_ / folderName / fileName).string());
         }
-    } else { // failed to create the directory. Count each sprite as an individual fail
-        jobStats.n_save_error += CHAR_SHEET_TYPE_TO_NAME.size();
+
+        errorCount += error;
     }
+
+    return errorCount;
 
 }
 
@@ -301,39 +331,57 @@ bool SpriteSheetIO::charSpritesAreAlpha(unsigned char* sprites [SPRITES_PER_CHAR
 
 /**
  * Very little is known on the expected folder name of the sprite splitting.
- * Therefore an assumption is made it is the sheet name minus dimension, specified at the end.
+ * Therefore an assumption is made it is the sheet name and dimension, specified at the end.
+ *
+ * Hence, for example "AbyssOfDemonsChars16x16.png" becomes "AbyssOfDemonsChars16".
+ * Specifying the dimension is important, otherwise sprites from e.g. "AbyssOfDemonsChars8x8" could end up in the same folder.
  *
  * A realistic guess is that it's the same name as used in xml. Which is _usually_ this but not for some older files.
  * @param sheet filename or path to the original SpriteSheet file
  * @return suggested folder name by the above description.
  */
-std::string SpriteSheetIO::folderNameFromSheetName(const std::string &sheet, const SpriteSheetType& type) {
-    auto name = fs::path(sheet).filename();
-    auto toLower = [](std::string&& s)->std::string { std::string o; for (const auto& c : s) o.push_back(static_cast<char>(std::tolower(c))); return o; };
+std::string SpriteSheetIO::folderNameFromSheetName(const std::string& sheet, const SpriteSheetType& type) {
+    auto toLower = [](const std::string& s)->std::string { std::string o; for (const auto& c : s) o.push_back(static_cast<char>(std::tolower(c))); return o; };
     size_t index;
     std::string specifier;
     switch(type) {
         case SpriteSheetType::OBJECT: {
             specifier = "objects";
-            std::string lowerName = {(toLower(std::move(name.string())))};
-            index = lowerName.find(specifier);
             break;
         }
         case SpriteSheetType::CHARACTER: {
             specifier = "chars";
-            std::string lowerName{toLower(std::move(name.string()))};
-            index = lowerName.find(specifier);
             break;
         }
         default: return {"error_unknown_sheet_type"};
     }
 
-    if (index == (size_t) -1) { // no type specifier? at least split off the .png and suggest that as folder name.
-        std::string returns = name.string();
-        return returns.substr(0, returns.size() - 4);
-    } else {
-        return name.string().substr(0, index + specifier.size());
+    std::string lowerName {std::move(toLower(sheet))};
+    index = lowerName.find(specifier);
+    // now have the index to the start of specifier, but want to include dimension number as well.
+    if (index != (size_t) -1) {
+        index = index + specifier.size(); // (only do this now in case of not found overflow) index points to end of specifier
+        index = lowerName.find('x', index+1); // +1: includes self, what if a future specifier ends in 'x'? Dimensions are at least one char so this is OK.
     }
+
+    if (index == (size_t) -1) { // no type specifier? at least split off the .png and suggest that as folder name.
+        return sheet.substr(0, sheet.size() - 4);
+    } else {
+        return sheet.substr(0, index);
+    }
+}
+
+/**
+ * Cleans out or creates the directory given by appending the given dir to the outFilePath_
+ * @param dir the folder(s) to append to outFilePath
+ * @return whether the operation was successful
+ */
+bool SpriteSheetIO::createCleanDirectory(const std::string& dir) const {
+    if (fs::exists(outFilePath_/dir)) {
+        fs::remove_all(outFilePath_/dir); // don't need the return code, any fail here means create_directory will fail.
+    }
+
+    return fs::create_directory(outFilePath_/dir);
 }
 
 SpriteSheetIO::~SpriteSheetIO() {

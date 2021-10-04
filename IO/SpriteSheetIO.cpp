@@ -102,25 +102,31 @@ unsigned int SpriteSheetIO::loadPNG(const std::string& fileName, std::vector<uns
 }
 
 /**
- * Generic entry point for saving a type of splits. Calls the correct saving method depending on the given SpriteSheetType.
- * @param data the split sprite data
- * @param spriteSize the size of the sprite (height in type of charsprites due to 2nd attack frame)
- * @param spriteCount amount of sprites
- * @param type type of SpriteSheet (e.g. object, char)
- * @param lodeState LodePNG Library state for encoding/decoding.
- * @param originalFileName FileName of the spriteSheet these splits came from
- * @param jobStats tracking object for splitting.
+ * Generic entry point for saving a type of splits. Calls the correct saving method depending on the given SpriteSheetType inside the SpriteSplittingData struct.
+ *
+ * @param ssd Struct containing all needed information for splits
+ * @param outStream stream object for printing. Can be std::cout, might be a synced stream for threading.
  */
-void SpriteSheetIO::saveSplits(SpriteSplittingData& ssd) const {
+void SpriteSheetIO::saveSplits(SpriteSplittingData& ssd, std::basic_ostream<char>& outStream) const {
+
+    std::string folderName = folderNameFromSheetName(ssd.originalFileName, ssd.sheetType);
+    std::error_code ec;
+    bool cleanedFolder = createCleanDirectory(folderName, ec);
+    if (! cleanedFolder || ec.value() != 0) {
+        outStream << "[ERROR] Failed to create folder " << folderName << "\n\t\t" << ec << "\n";
+        ssd.stats.n_save_error += ssd.spriteCount; // mark every sprite as failed.
+        return;
+    }
+
     switch (ssd.sheetType) {
         case SpriteSheetType::OBJECT:
-            saveObjectSplits(ssd);
+            saveObjectSplits(ssd, folderName);
             break;
         case SpriteSheetType::CHARACTER:
-            saveCharSplits(ssd);
+            saveCharSplits(ssd, folderName);
             break;
         default: // did you add a new SpriteSheetType?
-            std::cout << "[ERROR]: Unknown SpriteSheetType " << ssd.sheetType << "\n"; // is at risk of being mangled in printing due to multithreading, but given this is a 'developer only' error, I think that is OK. No need to supply the synced outstream or create one.
+            outStream << "[ERROR]: Unknown SpriteSheetType " << ssd.sheetType << "\n";
             exit(-1);
     }
 }
@@ -141,14 +147,7 @@ void SpriteSheetIO::saveSplits(SpriteSplittingData& ssd) const {
  *            originalFileName: name of the SpriteSheet the splits originate from
  *            stats: stat tracking object
  */
-void SpriteSheetIO::saveObjectSplits(SpriteSplittingData& ssd) const {
-
-    std::string folderName = folderNameFromSheetName(ssd.originalFileName, SpriteSheetType::OBJECT);
-    bool cleanedFolder = createCleanDirectory(folderName);
-    if (! cleanedFolder) {
-        ssd.stats.n_save_error += ssd.spriteCount; // mark every sprite as failed.
-        return;
-    }
+void SpriteSheetIO::saveObjectSplits(SpriteSplittingData& ssd, const std::string& folderName) const {
 
     auto* sprite = new unsigned char[ssd.spriteSize * ssd.spriteSize * 4];
     int skippedSprites = 0;
@@ -219,15 +218,7 @@ bool SpriteSheetIO::saveObjectSprite(const unsigned char* sprite, int index, uns
  *            stats: stat tracking object
  *
  */
-void SpriteSheetIO::saveCharSplits(SpriteSplittingData& ssd) const {
-
-    std::string folderName = folderNameFromSheetName(ssd.originalFileName, SpriteSheetType::CHARACTER);
-    bool cleanedFolder = createCleanDirectory(folderName);
-    if (! cleanedFolder) {
-        ssd.stats.n_save_error += ssd.spriteCount; // mark every sprite as failed
-        return;
-    }
-
+void SpriteSheetIO::saveCharSplits(SpriteSplittingData& ssd, const std::string& folderName) const {
     // for char sheets, one row = one character. If there exists invisible frames on that row (but not all are invisible),
     // then that is perfectly valid. For example, pet skins without attack frames.
     // I suspect Exalt still expects full alpha frames to slot into e.g. a pets attack frames.
@@ -337,10 +328,13 @@ bool SpriteSheetIO::charSpritesAreAlpha(unsigned char* sprites [SPRITES_PER_CHAR
  * Specifying the dimension is important, otherwise sprites from e.g. "AbyssOfDemonsChars8x8" could end up in the same folder.
  *
  * A realistic guess is that it's the same name as used in xml. Which is _usually_ this but not for some older files.
- * @param sheet filename or path to the original SpriteSheet file
+ * @param sheetPath path to the original SpriteSheet file
  * @return suggested folder name by the above description.
  */
-std::string SpriteSheetIO::folderNameFromSheetName(const std::string& sheet, const SpriteSheetType& type) {
+std::string SpriteSheetIO::folderNameFromSheetName(const std::string& sheetPath, const SpriteSheetType& type) {
+    // get filename section of sheet path
+    std::string fileName = std::move(fs::path(sheetPath).filename().string());
+    // lowercase conversion lambda
     auto toLower = [](const std::string& s)->std::string { std::string o; for (const auto& c : s) o.push_back(static_cast<char>(std::tolower(c))); return o; };
     size_t index;
     std::string specifier;
@@ -356,18 +350,20 @@ std::string SpriteSheetIO::folderNameFromSheetName(const std::string& sheet, con
         default: return {"error_unknown_sheet_type"};
     }
 
-    std::string lowerName {std::move(toLower(sheet))};
+    std::string lowerName {std::move(toLower(fileName))};
     index = lowerName.find(specifier);
-    // now have the index to the start of specifier, but want to include dimension number as well.
-    if (index != (size_t) -1) {
+
+    if (index == 0) { // some 2010 sheets start with their specifier instead of at the end. Treat those as if no specifier was found. Otherwise, multiple threads would write to e.g. a folder 'chars_16'. This usually results in an error.
+        index = (size_t) -1;
+    } else if (index != (size_t) -1) { // now have the index to the start of specifier, but want to include dimension number as well.
         index = index + specifier.size(); // (only do this now in case of not found overflow) index points to end of specifier
         index = lowerName.find('x', index+1); // +1: includes self, what if a future specifier ends in 'x'? Dimensions are at least one char so this is OK.
     }
 
     if (index == (size_t) -1) { // no type specifier? at least split off the .png and suggest that as folder name.
-        return sheet.substr(0, sheet.size() - 4);
+        return fileName.substr(0, fileName.size() - 4);
     } else {
-        return sheet.substr(0, index);
+        return fileName.substr(0, index);
     }
 }
 
@@ -376,12 +372,14 @@ std::string SpriteSheetIO::folderNameFromSheetName(const std::string& sheet, con
  * @param dir the folder(s) to append to outFilePath
  * @return whether the operation was successful
  */
-bool SpriteSheetIO::createCleanDirectory(const std::string& dir) const {
+bool SpriteSheetIO::createCleanDirectory(const std::string& dir, std::error_code& ec) const noexcept {
     if (fs::exists(outFilePath_/dir)) {
-        fs::remove_all(outFilePath_/dir); // don't need the return code, any fail here means create_directory will fail.
+        fs::remove_all(outFilePath_/dir, ec);
     }
 
-    return fs::create_directory(outFilePath_/dir);
+    if (ec.value() != 0) return false;
+
+    return fs::create_directory(outFilePath_/dir, ec);
 }
 
 SpriteSheetIO::~SpriteSheetIO() {

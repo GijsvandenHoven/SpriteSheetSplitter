@@ -111,7 +111,7 @@ void Splitter::split(const std::string &fileName, SpriteSplittingStatus &jobStat
 
     unsigned int spriteSize; // size of a sprite (8, 16, 32..)
     unsigned int spriteCount; // amount of unsigned char* to expect back from splitting.
-    // pointer representing the specific function to call splitting on.
+    // pointer representing the specific function to call splitting on. Strategy pattern go brr.
     // This is to prevent allocating spriteData in each switch branch, by doing it after because it always has the same size.
     // But also preventing the need for calling a generic entry point which then _again_ has a switch on SpriteSheetType.
     void (*splitFunction)(SpriteSplittingData&);
@@ -143,7 +143,7 @@ void Splitter::split(const std::string &fileName, SpriteSplittingStatus &jobStat
     // split the sprites
     (*splitFunction)(splitData);
     // and save them
-    ssio.saveSplits(splitData);
+    ssio.saveSplits(splitData, outStream);
 
     outStream << "[INFO] Finished splitting SpriteSheet.\n";
 
@@ -157,7 +157,7 @@ void Splitter::split(const std::string &fileName, SpriteSplittingStatus &jobStat
  *
  * Assumes that the collection has enough space allocated to do this (spriteSize * spriteCount).
  *
- * @param ssd Struct containing all necessary data. See SpriteSplititngData.h.\n
+ * @param ssd Struct containing all necessary data. See SpriteSplittingData.h.\n
  *            In particular, these members are used:\n
  *            ssd.spriteSheet, ssd.spriteSize, ssd.SpriteCount, ssd.splitSprites
  */
@@ -185,7 +185,7 @@ void Splitter::splitObjectSheet(SpriteSplittingData& ssd) {
  *
  * Assumes that the collection has enough space allocated to do this (spriteSize * spriteCount).
  *
- * @param ssd Struct containing all necessary data. See SpriteSplititngData.h.\n
+ * @param ssd Struct containing all necessary data. See SpriteSplittingData.h.\n
  *            In particular, these members are used:\n
  *            ssd.spriteSheet, ssd.spriteSize, ssd.SpriteCount, ssd.splitSprites
  */

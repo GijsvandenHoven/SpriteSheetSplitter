@@ -124,17 +124,18 @@ void Splitter::split(const std::string &fileDirectory, SpriteSplittingStatus &jo
 
     unsigned int spriteSize; // size of a sprite (8, 16, 32..)
     unsigned int spriteCount; // amount of unsigned char* to expect back from splitting.
+
     // pointer representing the specific function to call splitting on. Strategy pattern go brr.
     // This is to prevent allocating spriteData in each switch branch, by doing it after because it always has the same size.
     // But also preventing the need for calling a generic entry point which then _again_ has a switch on SpriteSheetType.
-    void (*splitFunction)(SpriteSplittingData&); // todo: std::function?? wtf is this?
+    std::function<void(SpriteSplittingData&)> splitFunction;
 
     switch(type) {
         case SpriteSheetType::OBJECT:
             spriteSize = pngData.width / OBJ_SHEET_ROW;
             spriteCount = (img.size() / 4) / (spriteSize * spriteSize);
             // assign the correct function
-            splitFunction = & Splitter::splitObjectSheet;
+            splitFunction = Splitter::splitObjectSheet;
             break;
         case SpriteSheetType::CHARACTER:
             spriteSize = pngData.width / CHAR_SHEET_ROW;
@@ -142,7 +143,7 @@ void Splitter::split(const std::string &fileDirectory, SpriteSplittingStatus &jo
             spriteCount = ((img.size() / 4) / (spriteSize * spriteSize));
             spriteCount = (spriteCount / CHAR_SHEET_ROW) * (CHAR_SHEET_ROW - 2);
             // assign the correct function
-            splitFunction = & Splitter::splitCharSheet;
+            splitFunction = Splitter::splitCharSheet;
             break;
         default: // did you add a new type to the enum?
             outStream << "[ERROR] unknown SpriteSheetType" << type << "\n";
@@ -154,7 +155,7 @@ void Splitter::split(const std::string &fileDirectory, SpriteSplittingStatus &jo
     // bundle all these parameters into one struct
     SpriteSplittingData splitData(img.data(), spriteData, spriteSize, spriteCount, type, pngData.lodeState, fileDirectory, jobStats);
     // split the sprites
-    (*splitFunction)(splitData);
+    splitFunction(splitData);
     // and save them
     ssio.saveSplits(splitData, outStream);
 

@@ -167,7 +167,7 @@ void SpriteSheetIO::saveObjectSplits(SpriteSplittingData& ssd, const std::string
 
         if (transparent) {
             skippedSprites++;
-        } else {
+        } else { // todo: feature/improvedOptions - optionify skippedSprites subtraction on index here.
             // unsigned char* sprite is now holding a spriteSize * spriteSize * 4 byte sprite. Finally!
             bool error = saveObjectSprite(sprite, i - skippedSprites, ssd.spriteSize, ssd.lodeState, folderName);
             ssd.stats.n_save_error +=   error;
@@ -197,7 +197,7 @@ bool SpriteSheetIO::saveObjectSprite(const unsigned char* sprite, int index, uns
     std::vector<unsigned char> encodedPixels;
 
     error = lodepng::encode(encodedPixels, sprite, spriteSize, spriteSize, lodeState);
-    if (!error) {
+    if (!error) { // todo: feature/improvedOptions remove folderName or make option?
         error = lodepng::save_file(encodedPixels, (outFilePath_/folderName/fileName).string());
     }
 
@@ -246,7 +246,7 @@ void SpriteSheetIO::saveCharSplits(SpriteSplittingData& ssd, const std::string& 
         if (i % SPRITES_PER_CHAR == SPRITES_PER_CHAR - 1) {
             if (charSpritesAreAlpha(charSprites, ssd.spriteSize, sprite_4)) {
                 skippedSprites++;
-            } else {
+            } else { // todo: feature/improvedOptions - optionify skippedSprites subtraction on index here.
                 // unsigned char** charSprites is now holding a chars' sprites. Finally!
                 unsigned int errors = saveCharSprites(charSprites, (i / SPRITES_PER_CHAR) - skippedSprites, ssd.spriteSize, ssd.lodeState, folderName);
                 ssd.stats.n_save_error += errors;

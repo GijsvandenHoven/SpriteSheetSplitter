@@ -10,6 +10,7 @@
 #include "../util/CharSheetInfo.h"
 #include "../util/SpriteSplittingStatus.h"
 #include "../util/SpriteSplittingData.h"
+#include "IOOptions.hpp"
 
 namespace fs = std::filesystem;
 
@@ -21,6 +22,7 @@ public:
     ~SpriteSheetIO();
     bool setInPath(const std::string& pathName, bool shouldBePNG, bool recursive);
     bool setOutPath(const std::string& pathName);
+    void setIOOptions(const IOOptions & opts);
     void fillPNGQueue(std::queue<std::string>& q);
     static unsigned int loadPNG(const std::string& fileName, std::vector<unsigned char> &buffer, SpriteSheetPNGData& data);
     void saveSplits(SpriteSplittingData& ssd, std::basic_ostream<char>& outStream) const;
@@ -28,6 +30,7 @@ public:
 private:
     fs::path inFilePath_;
     fs::path outFilePath_;
+    IOOptions IOOpts_;
     ignorant_directory_iterator* directoryIterator_ = nullptr;
     [[nodiscard]] bool createCleanDirectory(const std::string& dir, std::error_code& ec) const noexcept;
     void saveObjectSplits(SpriteSplittingData& ssd, const std::string& folderName) const;

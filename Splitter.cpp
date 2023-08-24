@@ -5,18 +5,29 @@
 #include "util/SimpleTimer.h"
 
 void Splitter::work(std::vector <SplitterOpts> &jobs) {
-    SpriteSplittingStatus jobStats{};
+    SpriteSplittingStatus jobStats;
 
     int jobCounter = 0;
     for (auto& job : jobs) {
         // todo: to really push the concurrency, any job could be its own process.
         bool inPathOK = ssio.setInPath(job.inDirectory, job.isPNGInDirectory, job.recursive);
         bool outPathOK = ssio.setOutPath(job.outDirectory);
+        ssio.setIOOptions(IOOptions(job));
         // only work the job if the input is OK. The only input error that can happen from now on is a png decode error or malformed SpriteSheet.
-        if (! (inPathOK && outPathOK)) continue;
+        if (! (inPathOK && outPathOK)) {
+            std::cout << "[ERROR] Something went wrong with setting the in or out path for this job. Please check the program output.\n";
+            std::cout << "\tIn path provided:\t" << job.inDirectory << "\n";
+            std::cout << "\tOut path provided:\t" << job.outDirectory << "\n";
+            continue;
+        }
 
         std::queue<std::string> pngQueue;
         ssio.fillPNGQueue(pngQueue);
+
+        if (pngQueue.empty()) {
+            std::cout << "[WARNING] Zero png files were found from the input directory:";
+            std::cout << "\n\t\t" << job.inDirectory << "\n";
+        }
 
         if (job.isPNGInDirectory) {
             std::string& onlyFile = pngQueue.front();
@@ -47,6 +58,8 @@ void Splitter::workFolder(int workCap, std::queue<std::string> &pngs, SpriteSpli
     SimpleTimer folder("Splitting this folder");
 #pragma omp parallel for schedule(dynamic) shared(work, pngs, std::cout, jobStats) default(none)
     for (int tid = 0; tid < work; ++tid) {
+        if (tid == 0) std::cout << "[INFO] Begin working on a folder using " << omp_get_num_threads() << " threads\n";
+
         std::string file;
 #pragma omp critical(queueAccess)
         {
@@ -57,7 +70,7 @@ void Splitter::workFolder(int workCap, std::queue<std::string> &pngs, SpriteSpli
         // for printing without data races. Downside, only prints when the object is destroyed (end of loop iteration).
         std::osyncstream synced_out(std::cout);
 
-        SpriteSplittingStatus individualJobStats{};
+        SpriteSplittingStatus individualJobStats;
         split(file, individualJobStats, synced_out);
 
 #pragma omp critical(updateStats)
@@ -68,28 +81,28 @@ void Splitter::workFolder(int workCap, std::queue<std::string> &pngs, SpriteSpli
 }
 
 /**
- * Load a SpriteSheet from the given fileName, split the data in single sprites with the correct name, then save.
+ * Load a SpriteSheet from the given fileDirectory, split the data in single sprites with the correct name, then save.
  *
  * Automatically detects the SpriteSheet type (if any).
  * Does not split fully invisible (alpha 0 on every pixel) objects or chars. Chars with only some invisible frames are OK.
  *
  * Automatically determines the name of a folder based on the SpriteSheet name, unless (todo specified otherwise)
  *
- * @param fileName A path to a .png SpriteSheet file.
+ * @param fileDirectory A path to a .png SpriteSheet file.
  * @param outStream stream for printing characters. Normally std::cout, but could be std::osyncstream from threading.
  * @param jobStats struct for counting stats of splitting.
  */
-void Splitter::split(const std::string &fileName, SpriteSplittingStatus &jobStats, std::basic_ostream<char> &outStream) const {
+void Splitter::split(const std::string &fileDirectory, SpriteSplittingStatus &jobStats, std::basic_ostream<char> &outStream) const {
     SimpleTimer timer {"Splitting this file", outStream};
     std::vector<unsigned char> img;
     SpriteSheetPNGData pngData;
 
-    outStream << "[INFO] Loading " << fileName << "\n";
+    outStream << "[INFO][T_" << omp_get_thread_num() << "] Loading " << fileDirectory << "\n";
 
-    SpriteSheetIO::loadPNG(fileName, img, pngData);
+    SpriteSheetIO::loadPNG(fileDirectory, img, pngData);
 
     if (pngData.error) {
-        outStream << "[ERROR] LodePNG decode error: " << pngData.error << ". (Most likely a corrupt png)\n"; // if it's an incorrect path at this point then that is a bug!
+        outStream << "[ERROR][T_" << omp_get_thread_num() << "] LodePNG decode error: " << pngData.error << ". (Most likely a corrupt png)\n"; // if it's an incorrect path at this point then that is a bug!
         jobStats.n_load_error += 1;
         return;
     }
@@ -102,19 +115,19 @@ void Splitter::split(const std::string &fileName, SpriteSplittingStatus &jobStat
     } else if (validSpriteSheet(pngData.width, pngData.height, CHAR_SHEET_ROW)) {
         type = SpriteSheetType::CHARACTER;
     } else {
-        outStream << "[ERROR] An image of size " << pngData.width << ", " << pngData.height << " is not a valid SpriteSheet.\n";
+        outStream << "[ERROR][T_" << omp_get_thread_num() << "] An image of size " << pngData.width << ", " << pngData.height << " is not a valid SpriteSheet.\n";
         jobStats.n_load_error += 1;
         return;
     }
 
-    outStream << "[INFO] Processing file as " << type << " sheet\n";
+    outStream << "[INFO][T_" << omp_get_thread_num() << "] Processing file as " << type << " sheet\n";
 
     unsigned int spriteSize; // size of a sprite (8, 16, 32..)
     unsigned int spriteCount; // amount of unsigned char* to expect back from splitting.
     // pointer representing the specific function to call splitting on. Strategy pattern go brr.
     // This is to prevent allocating spriteData in each switch branch, by doing it after because it always has the same size.
     // But also preventing the need for calling a generic entry point which then _again_ has a switch on SpriteSheetType.
-    void (*splitFunction)(SpriteSplittingData&);
+    void (*splitFunction)(SpriteSplittingData&); // todo: std::function?? wtf is this?
 
     switch(type) {
         case SpriteSheetType::OBJECT:
@@ -139,13 +152,13 @@ void Splitter::split(const std::string &fileName, SpriteSplittingStatus &jobStat
     // rows per sprite * amount of sprites that fit on the sheet
     auto spriteData = new unsigned char* [spriteSize * spriteCount];
     // bundle all these parameters into one struct
-    SpriteSplittingData splitData(img.data(), spriteData, spriteSize, spriteCount, type, pngData.lodeState, fileName, jobStats);
+    SpriteSplittingData splitData(img.data(), spriteData, spriteSize, spriteCount, type, pngData.lodeState, fileDirectory, jobStats);
     // split the sprites
     (*splitFunction)(splitData);
     // and save them
     ssio.saveSplits(splitData, outStream);
 
-    outStream << "[INFO] Finished splitting SpriteSheet.\n";
+    outStream << "[INFO][T_" << omp_get_thread_num() << "] Finished splitting SpriteSheet.\n";
 
     delete[] spriteData;
 }

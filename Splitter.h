@@ -15,7 +15,7 @@ private:
     SpriteSheetIO ssio;
 
     void workFolder(int workCap, std::queue<std::string> &pngs, SpriteSplittingStatus &jobStats) const;
-    void split(const std::string &fileName, SpriteSplittingStatus &jobStats, std::basic_ostream<char> &outStream) const;
+    void split(const std::string &fileDirectory, SpriteSplittingStatus &jobStats, std::basic_ostream<char> &outStream) const;
     static bool validSpriteSheet(unsigned int width, unsigned int height, unsigned int columnCount);
     static void splitObjectSheet(SpriteSplittingData& ssd);
     static void splitCharSheet(SpriteSplittingData& ssd);

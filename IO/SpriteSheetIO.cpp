@@ -47,13 +47,17 @@ bool SpriteSheetIO::setInPath(const std::string& pathName, bool shouldBePNG, boo
 bool SpriteSheetIO::setOutPath(const std::string &pathName) {
     outFilePath_ = fs::path(pathName).make_preferred();
 
-    if (! fs::is_directory(outFilePath_)) {
-        outFilePath_ = outFilePath_.parent_path();
+    if(! fs::exists(outFilePath_)) {
+        std::cout << "[WARNING] The provided output directory does not exist.\n\t\t" << outFilePath_ << "\n";
+        std::cout << "[WARNING] This directory will be created.\n";
+        std::error_code ec;
+        fs::create_directory(outFilePath_, ec);
+
+        if (ec.value() != 0) return false;
     }
 
-    if(! fs::exists(outFilePath_)) {
-        std::cout << "[ERROR] The provided output directory does not exist.\n\t\t" << outFilePath_ << "\n";
-        return false;
+    if (! fs::is_directory(outFilePath_)) {
+        outFilePath_ = outFilePath_.parent_path();
     }
 
     if (! fs::is_directory(outFilePath_)) {
@@ -62,6 +66,10 @@ bool SpriteSheetIO::setOutPath(const std::string &pathName) {
     }
 
     return true;
+}
+
+void SpriteSheetIO::setIOOptions(const IOOptions &opts) {
+    IOOpts_ = opts;
 }
 
 /**
@@ -167,9 +175,11 @@ void SpriteSheetIO::saveObjectSplits(SpriteSplittingData& ssd, const std::string
 
         if (transparent) {
             skippedSprites++;
-        } else { // todo: feature/improvedOptions - optionify skippedSprites subtraction on index here.
+        } else {
+            // subtract from the index the amount of alpha sprites we ignored, if this indexing method is user specified.
+            int index = i - (IOOpts_.subtractAlphaFromIndex ? skippedSprites : 0);
             // unsigned char* sprite is now holding a spriteSize * spriteSize * 4 byte sprite. Finally!
-            bool error = saveObjectSprite(sprite, i - skippedSprites, ssd.spriteSize, ssd.lodeState, folderName);
+            bool error = saveObjectSprite(sprite, index, ssd.spriteSize, ssd.lodeState, folderName);
             ssd.stats.n_save_error +=   error;
             ssd.stats.n_success +=      ! error;
         }
@@ -197,8 +207,13 @@ bool SpriteSheetIO::saveObjectSprite(const unsigned char* sprite, int index, uns
     std::vector<unsigned char> encodedPixels;
 
     error = lodepng::encode(encodedPixels, sprite, spriteSize, spriteSize, lodeState);
-    if (!error) { // todo: feature/improvedOptions remove folderName or make option?
-        error = lodepng::save_file(encodedPixels, (outFilePath_/folderName/fileName).string());
+    if (!error) {
+        std::filesystem::path outPath = outFilePath_;
+        if (IOOpts_.useSubFolders) { // insert a subfolder in the directory if specified by options.
+            outPath /= folderName;
+        }
+        outPath /= fileName;
+        error = lodepng::save_file(encodedPixels, outPath.string());
     }
 
     return error;
@@ -246,9 +261,11 @@ void SpriteSheetIO::saveCharSplits(SpriteSplittingData& ssd, const std::string& 
         if (i % SPRITES_PER_CHAR == SPRITES_PER_CHAR - 1) {
             if (charSpritesAreAlpha(charSprites, ssd.spriteSize, sprite_4)) {
                 skippedSprites++;
-            } else { // todo: feature/improvedOptions - optionify skippedSprites subtraction on index here.
+            } else {
+                // subtract from the index the amount of alpha sprites we ignored, if this indexing method is user specified.
+                int index = (i / SPRITES_PER_CHAR) - (IOOpts_.subtractAlphaFromIndex ? skippedSprites : 0);
                 // unsigned char** charSprites is now holding a chars' sprites. Finally!
-                unsigned int errors = saveCharSprites(charSprites, (i / SPRITES_PER_CHAR) - skippedSprites, ssd.spriteSize, ssd.lodeState, folderName);
+                unsigned int errors = saveCharSprites(charSprites, index, ssd.spriteSize, ssd.lodeState, folderName);
                 ssd.stats.n_save_error += errors;
                 ssd.stats.n_success += static_cast<unsigned int>(SPRITES_PER_CHAR) - errors;
             }
@@ -291,7 +308,12 @@ unsigned int SpriteSheetIO::saveCharSprites(unsigned char *sprites [SPRITES_PER_
         error = lodepng::encode(encodedPixels, sprites[spriteIndex], width, spriteSize, lodeState);
 
         if (!error) {
-            error = lodepng::save_file(encodedPixels, (outFilePath_ / folderName / fileName).string());
+            std::filesystem::path outPath = outFilePath_;
+            if (IOOpts_.useSubFolders) { // insert a subfolder in the directory if specified by options.
+                outPath /= folderName;
+            }
+            outPath /= fileName;
+            error = lodepng::save_file(encodedPixels, outPath.string());
         }
 
         errorCount += error;
@@ -336,7 +358,6 @@ std::string SpriteSheetIO::folderNameFromSheetName(const std::string& sheetPath,
     std::string fileName = std::move(fs::path(sheetPath).filename().string());
     // lowercase conversion lambda
     auto toLower = [](const std::string& s)->std::string { std::string o; for (const auto& c : s) o.push_back(static_cast<char>(std::tolower(c))); return o; };
-    size_t index;
     std::string specifier;
     switch(type) {
         case SpriteSheetType::OBJECT: {
@@ -351,35 +372,75 @@ std::string SpriteSheetIO::folderNameFromSheetName(const std::string& sheetPath,
     }
 
     std::string lowerName {std::move(toLower(fileName))};
-    index = lowerName.find(specifier);
 
-    if (index == 0) { // some 2010 sheets start with their specifier instead of at the end. Treat those as if no specifier was found. Otherwise, multiple threads would write to e.g. a folder 'chars_16'. This usually results in an error.
-        index = (size_t) -1;
-    } else if (index != (size_t) -1) { // now have the index to the start of specifier, but want to include dimension number as well.
-        index = index + specifier.size(); // (only do this now in case of not found overflow) index points to end of specifier
-        index = lowerName.find('x', index+1); // +1: includes self, what if a future specifier ends in 'x'? Dimensions are at least one char so this is OK.
+    size_t sheet_size_specifier_start_index = lowerName.find(specifier);
+    size_t sheet_name_end_index = std::string::npos;
+
+    switch (sheet_size_specifier_start_index) {
+        case 0:
+        case std::string::npos:
+            break; // cannot deduce a folder name with name, type and dimension specifier.
+        default:
+            // Set the dimension specifier start index to the first character past the size specifier.
+            size_t dimension_specifier_start_index = sheet_size_specifier_start_index + specifier.size();
+            // Set the dimension specifier end index, start searching 1 char past the specifier. Dimensions are at least one char so this is OK.
+            size_t dimension_specifier_end_index = lowerName.find('x', dimension_specifier_start_index + 1);
+
+            // If there is indeed an 'x', assume this is a size specifier.
+            if (dimension_specifier_end_index != std::string::npos) {
+                // This value typically is 1 or 2. (e.g. values 8x8 or 16x16, where start_index points to the first char, and end_index to the 'x' char)
+                size_t dimension_specifier_n_char = dimension_specifier_end_index - dimension_specifier_start_index;
+                // (0) starting from 'start of dimension specifier':
+                // (1) go forward the dimension char amount
+                // (2) go forward 1, to get past the 'x'
+                // (3) go forward the dimension char amount.
+                // This results in an index pointing to the character past the dimension specifier.
+                // The expression in these steps is rewritten to 1 + (2 x size)
+
+                // Example: RandomNameObjects16x16
+                //                           ^ ^^ ^
+                //                           0 12 3
+                sheet_name_end_index = dimension_specifier_start_index + 1 + (2 * dimension_specifier_n_char);
+
+                if (sheet_name_end_index > fileName.size() - 4) {
+                    // this end index points past the fileName (minus .png) !
+                    // This could happen if there was no dimension specifier after all, e.g.
+                    // RandomNameObjects16x      (no number after x)
+                    sheet_name_end_index = std::string::npos;
+                }
+            }
     }
 
-    if (index == (size_t) -1) { // no type specifier? at least split off the .png and suggest that as folder name.
+    if (sheet_name_end_index == std::string::npos) {
+        // no valid type specifier? at least split off the .png and suggest that as folder name.
         return fileName.substr(0, fileName.size() - 4);
     } else {
-        return fileName.substr(0, index);
+        return fileName.substr(0, sheet_name_end_index);
     }
 }
 
 /**
  * Cleans out or creates the directory given by appending the given dir to the outFilePath_
+ *
+ * Depending on the useSubFolders option, either the subdirectory is cleaned, or nothing is done at all:
+ * If a shared folder for multiple sheets gets cleaned, one file's splits would be saved,
+ * only for a future split to empty this folder again and put its splits in.
+ *
  * @param dir the folder(s) to append to outFilePath
  * @return whether the operation was successful
  */
 bool SpriteSheetIO::createCleanDirectory(const std::string& dir, std::error_code& ec) const noexcept {
-    if (fs::exists(outFilePath_/dir)) {
-        fs::remove_all(outFilePath_/dir, ec);
-    }
+     if (IOOpts_.useSubFolders) {
+        if (fs::exists(outFilePath_ / dir)) {
+            fs::remove_all(outFilePath_ / dir, ec);
+        }
 
-    if (ec.value() != 0) return false;
+        if (ec.value() != 0) return false;
 
-    return fs::create_directory(outFilePath_/dir, ec);
+        return fs::create_directory(outFilePath_ / dir, ec);
+     } else { // shared folder case, do not delete other threads' work!!
+         return true;
+     }
 }
 
 SpriteSheetIO::~SpriteSheetIO() {

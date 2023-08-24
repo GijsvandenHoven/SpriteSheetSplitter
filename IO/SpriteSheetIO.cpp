@@ -1,5 +1,6 @@
 #include <iostream>
 #include "SpriteSheetIO.h"
+#include <omp.h>
 
 /**
  * Validates the given path and sets the inFilePath member variable. Note, the member variable is set even if invalid.
@@ -128,10 +129,10 @@ void SpriteSheetIO::saveSplits(SpriteSplittingData& ssd, std::basic_ostream<char
 
     switch (ssd.sheetType) {
         case SpriteSheetType::OBJECT:
-            saveObjectSplits(ssd, folderName);
+            saveObjectSplits(ssd, folderName, outStream);
             break;
         case SpriteSheetType::CHARACTER:
-            saveCharSplits(ssd, folderName);
+            saveCharSplits(ssd, folderName, outStream);
             break;
         default: // did you add a new SpriteSheetType?
             outStream << "[ERROR]: Unknown SpriteSheetType " << ssd.sheetType << "\n";
@@ -155,7 +156,7 @@ void SpriteSheetIO::saveSplits(SpriteSplittingData& ssd, std::basic_ostream<char
  *            originalFileName: name of the SpriteSheet the splits originate from
  *            stats: stat tracking object
  */
-void SpriteSheetIO::saveObjectSplits(SpriteSplittingData& ssd, const std::string& folderName) const {
+void SpriteSheetIO::saveObjectSplits(SpriteSplittingData &ssd, const std::string &folderName, std::basic_ostream<char>& outStream) const {
 
     auto* sprite = new unsigned char[ssd.spriteSize * ssd.spriteSize * 4];
     int skippedSprites = 0;
@@ -179,7 +180,7 @@ void SpriteSheetIO::saveObjectSplits(SpriteSplittingData& ssd, const std::string
             // subtract from the index the amount of alpha sprites we ignored, if this indexing method is user specified.
             int index = i - (IOOpts_.subtractAlphaFromIndex ? skippedSprites : 0);
             // unsigned char* sprite is now holding a spriteSize * spriteSize * 4 byte sprite. Finally!
-            bool error = saveObjectSprite(sprite, index, ssd.spriteSize, ssd.lodeState, folderName);
+            bool error = saveObjectSprite(sprite, index, ssd.spriteSize, ssd.lodeState, folderName, outStream);
             ssd.stats.n_save_error +=   error;
             ssd.stats.n_success +=      ! error;
         }
@@ -201,12 +202,13 @@ void SpriteSheetIO::saveObjectSplits(SpriteSplittingData& ssd, const std::string
  *
  * @return whether an error ocurred.
  */
-bool SpriteSheetIO::saveObjectSprite(const unsigned char* sprite, int index, unsigned int spriteSize, lodepng::State& lodeState, const std::string& folderName) const {
-    bool error;
+bool SpriteSheetIO::saveObjectSprite(const unsigned char* sprite, int index, unsigned int spriteSize, lodepng::State& lodeState, const std::string& folderName, std::basic_ostream<char>& outStream) const {
+    unsigned int error;
     std::string fileName = std::to_string(index) + ".png";
     std::vector<unsigned char> encodedPixels;
 
     error = lodepng::encode(encodedPixels, sprite, spriteSize, spriteSize, lodeState);
+    checkLodePNGErrorCode(error, outStream);
     if (!error) {
         std::filesystem::path outPath = outFilePath_;
         if (IOOpts_.useSubFolders) { // insert a subfolder in the directory if specified by options.
@@ -214,9 +216,10 @@ bool SpriteSheetIO::saveObjectSprite(const unsigned char* sprite, int index, uns
         }
         outPath /= fileName;
         error = lodepng::save_file(encodedPixels, outPath.string());
+        checkLodePNGErrorCode(error, outStream);
     }
 
-    return error;
+    return static_cast<bool>(error);
 }
 
 /**
@@ -233,7 +236,7 @@ bool SpriteSheetIO::saveObjectSprite(const unsigned char* sprite, int index, uns
  *            stats: stat tracking object
  *
  */
-void SpriteSheetIO::saveCharSplits(SpriteSplittingData& ssd, const std::string& folderName) const {
+void SpriteSheetIO::saveCharSplits(SpriteSplittingData& ssd, const std::string& folderName, std::basic_ostream<char>& outStream) const {
     // for char sheets, one row = one character. If there exists invisible frames on that row (but not all are invisible),
     // then that is perfectly valid. For example, pet skins without attack frames.
     // I suspect Exalt still expects full alpha frames to slot into e.g. a pets attack frames.
@@ -265,7 +268,7 @@ void SpriteSheetIO::saveCharSplits(SpriteSplittingData& ssd, const std::string& 
                 // subtract from the index the amount of alpha sprites we ignored, if this indexing method is user specified.
                 int index = (i / SPRITES_PER_CHAR) - (IOOpts_.subtractAlphaFromIndex ? skippedSprites : 0);
                 // unsigned char** charSprites is now holding a chars' sprites. Finally!
-                unsigned int errors = saveCharSprites(charSprites, index, ssd.spriteSize, ssd.lodeState, folderName);
+                unsigned int errors = saveCharSprites(charSprites, index, ssd.spriteSize, ssd.lodeState, folderName, outStream);
                 ssd.stats.n_save_error += errors;
                 ssd.stats.n_success += static_cast<unsigned int>(SPRITES_PER_CHAR) - errors;
             }
@@ -292,8 +295,8 @@ void SpriteSheetIO::saveCharSplits(SpriteSplittingData& ssd, const std::string& 
  *
  * @return number of errors that occurred.
  */
-unsigned int SpriteSheetIO::saveCharSprites(unsigned char *sprites [SPRITES_PER_CHAR], int index, unsigned int spriteSize, lodepng::State &lodeState, const std::string &folderName) const {
-    bool error; // handily casts away error codes from lodePNG to just "error Y/N". this is intended.
+unsigned int SpriteSheetIO::saveCharSprites(unsigned char *sprites [SPRITES_PER_CHAR], int index, unsigned int spriteSize, lodepng::State &lodeState, const std::string &folderName, std::basic_ostream<char>& outStream) const {
+    unsigned int error;
     unsigned int errorCount = 0;
     std::string baseFileName = std::to_string(index) + '_';
 
@@ -306,6 +309,7 @@ unsigned int SpriteSheetIO::saveCharSprites(unsigned char *sprites [SPRITES_PER_
 
         std::vector<unsigned char> encodedPixels;
         error = lodepng::encode(encodedPixels, sprites[spriteIndex], width, spriteSize, lodeState);
+        checkLodePNGErrorCode(error, outStream);
 
         if (!error) {
             std::filesystem::path outPath = outFilePath_;
@@ -314,13 +318,13 @@ unsigned int SpriteSheetIO::saveCharSprites(unsigned char *sprites [SPRITES_PER_
             }
             outPath /= fileName;
             error = lodepng::save_file(encodedPixels, outPath.string());
+            checkLodePNGErrorCode(error, outStream);
         }
 
-        errorCount += error;
+        errorCount += error == 0;
     }
 
     return errorCount;
-
 }
 
 /**
@@ -445,4 +449,9 @@ bool SpriteSheetIO::createCleanDirectory(const std::string& dir, std::error_code
 
 SpriteSheetIO::~SpriteSheetIO() {
     delete directoryIterator_;
+}
+
+// Print an error, if and only if the lodePNG error code returned is non-zero.
+void SpriteSheetIO::checkLodePNGErrorCode(unsigned int lode_code, std::basic_ostream<char>& outStream) {
+    if (lode_code) outStream << "[ERROR] LodePNG error: " << lodepng_error_text(lode_code) << ".\n";
 }

@@ -33,10 +33,11 @@ private:
     IOOptions IOOpts_;
     ignorant_directory_iterator* directoryIterator_ = nullptr;
     [[nodiscard]] bool createCleanDirectory(const std::string& dir, std::error_code& ec) const noexcept;
-    void saveObjectSplits(SpriteSplittingData& ssd, const std::string& folderName) const;
-    void saveCharSplits(SpriteSplittingData& ssd, const std::string& folderName) const;
-    bool saveObjectSprite(const unsigned char* sprite, int index, unsigned int spriteSize, lodepng::State& lodeState, const std::string& folderName) const;
-    unsigned int saveCharSprites(unsigned char* sprites [SPRITES_PER_CHAR], int index, unsigned int spriteSize, lodepng::State& lodeState, const std::string& folderName) const;
+    void saveObjectSplits(SpriteSplittingData &ssd, const std::string &folderName, std::basic_ostream<char>& outStream) const;
+    void saveCharSplits(SpriteSplittingData& ssd, const std::string& folderName, std::basic_ostream<char>& outStream) const;
+    bool saveObjectSprite(const unsigned char* sprite, int index, unsigned int spriteSize, lodepng::State& lodeState, const std::string& folderName, std::basic_ostream<char>& outStream) const;
+    unsigned int saveCharSprites(unsigned char* sprites [SPRITES_PER_CHAR], int index, unsigned int spriteSize, lodepng::State& lodeState, const std::string& folderName, std::basic_ostream<char>& outStream) const;
+    static void checkLodePNGErrorCode(unsigned int code, std::basic_ostream<char>& outStream);
     static bool charSpritesAreAlpha(unsigned char* sprites [SPRITES_PER_CHAR], unsigned int spriteSize, const unsigned char* elongatedSprite);
     static std::string folderNameFromSheetName(const std::string& sheetPath, const SpriteSheetType& type);
 };

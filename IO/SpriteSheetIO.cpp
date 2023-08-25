@@ -1,6 +1,5 @@
 #include <iostream>
 #include "SpriteSheetIO.h"
-#include <omp.h>
 
 /**
  * Validates the given path and sets the inFilePath member variable. Note, the member variable is set even if invalid.

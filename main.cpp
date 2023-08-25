@@ -3,6 +3,9 @@
 #include <vector>
 #include "util/SplitterOptions.h"
 #include "Splitter.h"
+#include "logging/LoggerTags.hpp"
+
+namespace logger = LoggerTags;
 
 // https://linux.die.net/man/3/getopt
 extern char* optarg; // NOLINT(readability-redundant-declaration)

@@ -12,10 +12,9 @@ extern char* optarg; // NOLINT(readability-redundant-declaration)
 [[maybe_unused]] // it is modified in getopt.h. Silly compiler.
 extern int optind; // NOLINT(readability-redundant-declaration)
 
-// todo: use constexpr std::string when gcc supports it
 // printed when the user gives illegal input
 std::string& getHELP_STRING() {
-    static std::string HELP_STRING = "usage: (todo)\nUse --help for more information.\n";
+    static std::string HELP_STRING = "Use --help for more information.\n";
     return HELP_STRING;
 }
 
@@ -56,7 +55,7 @@ int main(int argc, char* argv[]) {
     };
 
     if (argc <= 1) {
-        std::cout << "[ERROR] No input given.\n";
+        std::cout << logger::error << "No input given.\n";
         std::cout << HELP_STRING;
         exit(-1);
     }
@@ -131,11 +130,11 @@ void parseCommandLine(int argc, char* argv[], option* long_options, std::vector<
     }
 
     // Uncomment these lines if you want to debug all your command line parameters being read correctly.
-    // std::cout << "[INFO] Added job with these options:\n";
+    // std::cout << logger::info << " Added job with these options:\n";
     // std::cout << options << "\n"; // intentional double newline (one from operator<< of SplitterOpts).
 
-    std::cout << "[INFO] Input path is set to: " << options.inDirectory << "\n";
-    std::cout << "[INFO] Output path is set to: " << options.outDirectory << "\n";
+    std::cout << logger::info << "Input path is set to: " << options.inDirectory << "\n";
+    std::cout << logger::info << "Output path is set to: " << options.outDirectory << "\n";
 }
 
 /**
@@ -147,7 +146,6 @@ void parseCommandLine(int argc, char* argv[], option* long_options, std::vector<
  */
  //todo: with configs, optarg should not be used directly here (const char* instead, with the command line version passing optarg)
 void parseSingleParameter(int c, SplitterOpts& options) {
-    std::string& HELP_STRING = getHELP_STRING();
     switch (c) {
         case 'd':
         case 'i': {
@@ -173,7 +171,7 @@ void parseSingleParameter(int c, SplitterOpts& options) {
         }
         case 'k': {
             if (optarg == nullptr) {
-                std::cout << "[INFO] -k has no amount supplied: The entire directory will be processed.\n";
+                std::cout << logger::info << " -k has no amount supplied: The entire directory will be processed.\n";
                 options.workAmount = std::numeric_limits<int>::max();
             } else {
                 int amount;
@@ -250,23 +248,23 @@ bool validateOptions(SplitterOpts& options) {
     std::string& HELP_STRING = getHELP_STRING();
 
     if (options.inDirectory.empty()) {
-        std::cout << "[ERROR] No input directory specified.\n";
+        std::cout << logger::error << " No input directory specified.\n";
         std::cout << HELP_STRING;
         return false;
     }
 
     if (options.outDirectory.empty()) { // default to indirectory when not specified.
-        std::cout << "[WARNING] No output directory given, using input directory as output.\n";
+        std::cout << logger::warn << " No output directory given, using input directory as output.\n";
         options.outDirectory = options.inDirectory;
     }
 
     if (!options.isPNGInDirectory && options.workAmount == 0) {
-        std::cout << "[INFO] A folder (instead of a file) was given, but no -k specified. Defaulting to process the entire folder.\n";
+        std::cout << logger::info << " A folder (instead of a file) was given, but no -k specified. Defaulting to process the entire folder.\n";
         options.workAmount = std::numeric_limits<int>::max();
     }
 
     if (options.isPNGInDirectory && options.workAmount > 0) {
-        std::cout << "[WARNING] a .png file was given as input, but -k was specified. -k only works for folders, and will be ignored.\n";
+        std::cout << logger::warn << " a .png file was given as input, but -k was specified. -k only works for folders, and will be ignored.\n";
         options.workAmount = 1; // just in case
     }
 

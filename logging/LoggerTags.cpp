@@ -9,8 +9,8 @@ namespace LoggerTags {
     ErrorTag error;
     ThreadedErrorTag threaded_error;
 
-    WarningTag warning;
-    ThreadedWarningTag threaded_warning;
+    WarningTag warn;
+    ThreadedWarningTag threaded_warn;
 
     InfoTag info;
     ThreadedInfoTag threaded_info;

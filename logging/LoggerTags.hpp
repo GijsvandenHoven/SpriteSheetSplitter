@@ -21,8 +21,8 @@ struct ThreadedErrorTag {};
 extern ErrorTag error;
 extern ThreadedErrorTag threaded_error;
 
-extern WarningTag warning;
-extern ThreadedWarningTag threaded_warning;
+extern WarningTag warn;
+extern ThreadedWarningTag threaded_warn;
 
 extern InfoTag info;
 extern ThreadedInfoTag threaded_info;

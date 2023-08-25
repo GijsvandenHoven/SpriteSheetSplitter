@@ -3,6 +3,9 @@
 #include <omp.h>
 #include "Splitter.h"
 #include "util/SimpleTimer.h"
+#include "logging/LoggerTags.hpp"
+
+namespace logger = LoggerTags;
 
 void Splitter::work(std::vector <SplitterOpts> &jobs) {
     SpriteSplittingStatus jobStats;
@@ -15,7 +18,7 @@ void Splitter::work(std::vector <SplitterOpts> &jobs) {
         ssio.setIOOptions(IOOptions(job));
         // only work the job if the input is OK. The only input error that can happen from now on is a png decode error or malformed SpriteSheet.
         if (! (inPathOK && outPathOK)) {
-            std::cout << "[ERROR] Something went wrong with setting the in or out path for this job. Please check the program output.\n";
+            std::cout << logger::error << "Something went wrong with setting the in or out path for this job. Please check the program output.\n";
             std::cout << "\tIn path provided:\t" << job.inDirectory << "\n";
             std::cout << "\tOut path provided:\t" << job.outDirectory << "\n";
             continue;
@@ -25,7 +28,7 @@ void Splitter::work(std::vector <SplitterOpts> &jobs) {
         ssio.fillPNGQueue(pngQueue);
 
         if (pngQueue.empty()) {
-            std::cout << "[WARNING] Zero png files were found from the input directory:";
+            std::cout << logger::warn << "Zero png files were found from the input directory:";
             std::cout << "\n\t\t" << job.inDirectory << "\n";
         }
 
@@ -37,7 +40,7 @@ void Splitter::work(std::vector <SplitterOpts> &jobs) {
             workFolder(job.workAmount, pngQueue, jobStats);
         }
 
-        std::cout << "DONE with job " << ++jobCounter << " out of " << jobs.size() << "\n";
+        std::cout << logger::info << "DONE with job " << ++jobCounter << " out of " << jobs.size() << "\n";
     }
 
     std::cout << jobStats;
@@ -56,9 +59,9 @@ void Splitter::workFolder(int workCap, std::queue<std::string> &pngs, SpriteSpli
     const int work = std::min(workCap, static_cast<int>(pngs.size()));
 
     SimpleTimer folder("Splitting this folder");
-#pragma omp parallel for schedule(dynamic) shared(work, pngs, std::cout, jobStats) default(none)
+#pragma omp parallel for schedule(dynamic) shared(work, pngs, std::cout, jobStats, logger::info) default(none)
     for (int tid = 0; tid < work; ++tid) {
-        if (tid == 0) std::cout << "[INFO] Begin working on a folder using " << omp_get_num_threads() << " threads\n";
+        if (tid == 0) std::cout << logger::info << " Begin working on a folder using " << omp_get_num_threads() << " threads\n";
 
         std::string file;
 #pragma omp critical(queueAccess)
@@ -97,12 +100,12 @@ void Splitter::split(const std::string &fileDirectory, SpriteSplittingStatus &jo
     std::vector<unsigned char> img;
     SpriteSheetPNGData pngData;
 
-    outStream << "[INFO][T_" << omp_get_thread_num() << "] Loading " << fileDirectory << "\n";
+    outStream << logger::threaded_info << "Loading " << fileDirectory << "\n";
 
     SpriteSheetIO::loadPNG(fileDirectory, img, pngData);
 
     if (pngData.error) {
-        outStream << "[ERROR][T_" << omp_get_thread_num() << "] LodePNG decode error: " << pngData.error << ". (Most likely a corrupt png)\n"; // if it's an incorrect path at this point then that is a bug!
+        outStream << logger::threaded_error << "LodePNG decode error: " << pngData.error << ". (Most likely a corrupt png)\n"; // if it's an incorrect path at this point then that is a bug!
         jobStats.n_load_error += 1;
         return;
     }
@@ -115,12 +118,12 @@ void Splitter::split(const std::string &fileDirectory, SpriteSplittingStatus &jo
     } else if (validSpriteSheet(pngData.width, pngData.height, CHAR_SHEET_ROW)) {
         type = SpriteSheetType::CHARACTER;
     } else {
-        outStream << "[ERROR][T_" << omp_get_thread_num() << "] An image of size " << pngData.width << ", " << pngData.height << " is not a valid SpriteSheet.\n";
+        outStream << logger::threaded_error << "An image of size " << pngData.width << ", " << pngData.height << " is not a valid SpriteSheet.\n";
         jobStats.n_load_error += 1;
         return;
     }
 
-    outStream << "[INFO][T_" << omp_get_thread_num() << "] Processing file as " << type << " sheet\n";
+    outStream << logger::threaded_info << "Processing file as " << type << " sheet\n";
 
     unsigned int spriteSize; // size of a sprite (8, 16, 32..)
     unsigned int spriteCount; // amount of unsigned char* to expect back from splitting.
@@ -146,7 +149,7 @@ void Splitter::split(const std::string &fileDirectory, SpriteSplittingStatus &jo
             splitFunction = Splitter::splitCharSheet;
             break;
         default: // did you add a new type to the enum?
-            outStream << "[ERROR] unknown SpriteSheetType" << type << "\n";
+            outStream << logger::error << "unknown SpriteSheetType" << type << "\n";
             exit(-1);
     }
 
@@ -159,7 +162,7 @@ void Splitter::split(const std::string &fileDirectory, SpriteSplittingStatus &jo
     // and save them
     ssio.saveSplits(splitData, outStream);
 
-    outStream << "[INFO][T_" << omp_get_thread_num() << "] Finished splitting SpriteSheet.\n";
+    outStream << logger::threaded_info << "Finished splitting SpriteSheet.\n";
 
     delete[] spriteData;
 }

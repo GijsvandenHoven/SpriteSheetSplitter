@@ -3,16 +3,18 @@
 #include <vector>
 #include "util/SplitterOptions.h"
 #include "Splitter.h"
+#include "logging/LoggerTags.hpp"
+
+namespace logger = LoggerTags;
 
 // https://linux.die.net/man/3/getopt
 extern char* optarg; // NOLINT(readability-redundant-declaration)
 [[maybe_unused]] // it is modified in getopt.h. Silly compiler.
 extern int optind; // NOLINT(readability-redundant-declaration)
 
-// todo: use constexpr std::string when gcc supports it
 // printed when the user gives illegal input
 std::string& getHELP_STRING() {
-    static std::string HELP_STRING = "usage: (todo)\nUse --help for more information.\n";
+    static std::string HELP_STRING = "Use --help for more information.\n";
     return HELP_STRING;
 }
 
@@ -53,7 +55,7 @@ int main(int argc, char* argv[]) {
     };
 
     if (argc <= 1) {
-        std::cout << "[ERROR] No input given.\n";
+        std::cout << logger::error << "No input given.\n";
         std::cout << HELP_STRING;
         exit(-1);
     }
@@ -88,7 +90,7 @@ bool readConfig(int argc, char* argv[], option* long_options, [[maybe_unused]] s
     while (EOF != (c = getopt_long(argc, argv, OPT_STR, long_options, nullptr))) {
         if (c == 'c') {
             // todo: read config
-            std::cout << "configs are not supported yet.\n";
+            std::cout << logger::error << "configs are not supported yet.\n";
 
             // todo: before returning, report on the total amount of dropped jobs (from validation failures).
             return true;
@@ -128,11 +130,11 @@ void parseCommandLine(int argc, char* argv[], option* long_options, std::vector<
     }
 
     // Uncomment these lines if you want to debug all your command line parameters being read correctly.
-    // std::cout << "[INFO] Added job with these options:\n";
+    // std::cout << logger::info << " Added job with these options:\n";
     // std::cout << options << "\n"; // intentional double newline (one from operator<< of SplitterOpts).
 
-    std::cout << "[INFO] Input path is set to: " << options.inDirectory << "\n";
-    std::cout << "[INFO] Output path is set to: " << options.outDirectory << "\n";
+    std::cout << logger::info << "Input path is set to: " << options.inDirectory << "\n";
+    std::cout << logger::info << "Output path is set to: " << options.outDirectory << "\n";
 }
 
 /**
@@ -144,16 +146,15 @@ void parseCommandLine(int argc, char* argv[], option* long_options, std::vector<
  */
  //todo: with configs, optarg should not be used directly here (const char* instead, with the command line version passing optarg)
 void parseSingleParameter(int c, SplitterOpts& options) {
-    std::string& HELP_STRING = getHELP_STRING();
     switch (c) {
         case 'd':
         case 'i': {
             if (!options.inDirectory.empty()) {
-                std::cout << "[WARNING] duplicate in directory appears to be supplied. " <<
+                std::cout << logger::warn << "Duplicate in directory appears to be supplied. " <<
                           "This is not possible, only the latter ("<< (char) c << ") Will be used.\n";
             }
             if (optarg == nullptr) {
-                std::cout << "[WARNING] -i used without parameter. inDirectory will not be set.\n";
+                std::cout << logger::warn << "-i used without parameter. inDirectory will not be set.\n";
             } else {
                 options.inDirectory = optarg;
                 options.isPNGInDirectory = checkIsPNGDirectory(options.inDirectory);
@@ -162,7 +163,7 @@ void parseSingleParameter(int c, SplitterOpts& options) {
         }
         case 'o': {
             if (optarg == nullptr) {
-                std::cout << "[WARNING] -o used without parameter. outDirectory will not be set.\n";
+                std::cout << logger::warn << "-o used without parameter. outDirectory will not be set.\n";
             } else {
                 options.outDirectory = optarg;
             }
@@ -170,14 +171,14 @@ void parseSingleParameter(int c, SplitterOpts& options) {
         }
         case 'k': {
             if (optarg == nullptr) {
-                std::cout << "[INFO] -k has no amount supplied: The entire directory will be processed.\n";
+                std::cout << logger::info << "-k has no amount supplied: The entire directory will be processed.\n";
                 options.workAmount = std::numeric_limits<int>::max();
             } else {
                 int amount;
                 try {
                     amount = std::stoi(optarg);
                 } catch (std::invalid_argument& e) {
-                    std::cout << "[WARNING] -k expects numerical arguments (" << optarg << " was supplied). Using default of 1.\n";
+                    std::cout << logger::warn << "-k expects numerical arguments (" << optarg << " was supplied). Using default of 1.\n";
                     amount = 1;
                 }
                 options.workAmount = amount;
@@ -247,23 +248,23 @@ bool validateOptions(SplitterOpts& options) {
     std::string& HELP_STRING = getHELP_STRING();
 
     if (options.inDirectory.empty()) {
-        std::cout << "[ERROR] No input directory specified.\n";
+        std::cout << logger::error << "No input directory specified.\n";
         std::cout << HELP_STRING;
         return false;
     }
 
     if (options.outDirectory.empty()) { // default to indirectory when not specified.
-        std::cout << "[WARNING] No output directory given, using input directory as output.\n";
+        std::cout << logger::warn << "No output directory given, using input directory as output.\n";
         options.outDirectory = options.inDirectory;
     }
 
     if (!options.isPNGInDirectory && options.workAmount == 0) {
-        std::cout << "[INFO] A folder (instead of a file) was given, but no -k specified. Defaulting to process the entire folder.\n";
+        std::cout << logger::info << "A folder (instead of a file) was given, but no -k specified. Defaulting to process the entire folder.\n";
         options.workAmount = std::numeric_limits<int>::max();
     }
 
     if (options.isPNGInDirectory && options.workAmount > 0) {
-        std::cout << "[WARNING] a .png file was given as input, but -k was specified. -k only works for folders, and will be ignored.\n";
+        std::cout << logger::warn << "A .png file was given as input, but -k was specified. -k only works for folders, and will be ignored.\n";
         options.workAmount = 1; // just in case
     }
 

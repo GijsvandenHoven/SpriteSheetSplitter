@@ -1,6 +1,8 @@
 #include <iostream>
 #include "SpriteSheetIO.h"
-#include <omp.h>
+#include "../logging/LoggerTags.hpp"
+
+namespace logger = LoggerTags;
 
 /**
  * Validates the given path and sets the inFilePath member variable. Note, the member variable is set even if invalid.
@@ -17,13 +19,13 @@ bool SpriteSheetIO::setInPath(const std::string& pathName, bool shouldBePNG, boo
     inFilePath_ = fs::path(pathName).make_preferred();
 
     if (! fs::exists(inFilePath_)) {
-        std::cout << "[ERROR] The provided input directory does not exist:\n\t\t" << inFilePath_ << "\n";
+        std::cout << logger::error << "The provided input directory does not exist:\n\t\t" << inFilePath_ << "\n";
         return false;
     }
 
     // not a directory and not a png? that's an error
     if (! (shouldBePNG || fs::is_directory(inFilePath_))) {
-        std::cout << "[ERROR] The provided input directory is not a png file or folder:\n\t\t" << inFilePath_ << "\n";
+        std::cout << logger::error << "The provided input directory is not a png file or folder:\n\t\t" << inFilePath_ << "\n";
         return false;
     }
 
@@ -49,8 +51,8 @@ bool SpriteSheetIO::setOutPath(const std::string &pathName) {
     outFilePath_ = fs::path(pathName).make_preferred();
 
     if(! fs::exists(outFilePath_)) {
-        std::cout << "[WARNING] The provided output directory does not exist.\n\t\t" << outFilePath_ << "\n";
-        std::cout << "[WARNING] This directory will be created.\n";
+        std::cout << logger::warn << "The provided output directory does not exist.\n\t\t" << outFilePath_ << "\n";
+        std::cout << logger::warn << "This directory will be created.\n";
         std::error_code ec;
         fs::create_directory(outFilePath_, ec);
 
@@ -62,7 +64,7 @@ bool SpriteSheetIO::setOutPath(const std::string &pathName) {
     }
 
     if (! fs::is_directory(outFilePath_)) {
-        std::cout << "[ERROR] The output directory must be a folder.\n\t\t" << outFilePath_ << "\n";
+        std::cout << logger::error << "The output directory must be a folder.\n\t\t" << outFilePath_ << "\n";
         return false;
     }
 
@@ -122,7 +124,7 @@ void SpriteSheetIO::saveSplits(SpriteSplittingData& ssd, std::basic_ostream<char
     std::error_code ec;
     bool cleanedFolder = createCleanDirectory(folderName, ec);
     if (! cleanedFolder || ec.value() != 0) {
-        outStream << "[ERROR] Failed to create folder " << folderName << "\n\t\t" << ec << "\n";
+        outStream << logger::threaded_error << "Failed to create folder " << folderName << "\n\t\t" << ec << "\n";
         ssd.stats.n_save_error += ssd.spriteCount; // mark every sprite as failed.
         return;
     }
@@ -135,7 +137,7 @@ void SpriteSheetIO::saveSplits(SpriteSplittingData& ssd, std::basic_ostream<char
             saveCharSplits(ssd, folderName, outStream);
             break;
         default: // did you add a new SpriteSheetType?
-            outStream << "[ERROR]: Unknown SpriteSheetType " << ssd.sheetType << "\n";
+            outStream << logger::threaded_error << "Unknown SpriteSheetType " << ssd.sheetType << "\n";
             exit(-1);
     }
 }
@@ -453,5 +455,5 @@ SpriteSheetIO::~SpriteSheetIO() {
 
 // Print an error, if and only if the lodePNG error code returned is non-zero.
 void SpriteSheetIO::checkLodePNGErrorCode(unsigned int lode_code, std::basic_ostream<char>& outStream) {
-    if (lode_code) outStream << "[ERROR] LodePNG error: " << lodepng_error_text(lode_code) << ".\n";
+    if (lode_code) outStream << logger::error << "LodePNG error: " << lodepng_error_text(lode_code) << ".\n";
 }

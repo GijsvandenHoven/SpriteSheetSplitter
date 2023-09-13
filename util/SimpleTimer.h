@@ -1,7 +1,8 @@
-#include <utility>
-
 #ifndef SPRITESHEETSPLITTER_SIMPLETIMER_H
 #define SPRITESHEETSPLITTER_SIMPLETIMER_H
+
+#include <utility>
+#include "../logging/LoggerTags.hpp"
 
 struct SimpleTimer {
     SimpleTimer() = delete;
@@ -11,7 +12,7 @@ struct SimpleTimer {
 
     ~SimpleTimer() {
         auto duration = std::chrono::high_resolution_clock::now() - p;
-        outStream << "[INFO] " << name << " took: " << std::chrono::duration_cast<std::chrono::duration<double>>(duration).count() << " seconds.\n";
+        outStream << LoggerTags::threaded_info << name << " took: " << std::chrono::duration_cast<std::chrono::duration<double>>(duration).count() << " seconds.\n";
     }
 
 private:

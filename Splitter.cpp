@@ -1,6 +1,7 @@
 #include <vector>
 #include <syncstream>
 #include <omp.h>
+#include <functional>
 #include "Splitter.h"
 #include "util/SimpleTimer.h"
 #include "logging/LoggerTags.hpp"

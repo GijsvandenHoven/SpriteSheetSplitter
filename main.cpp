@@ -62,7 +62,7 @@ int main(int argc, char* argv[]) {
 
     std::vector<SplitterOpts> jobs;
     bool hasConfig = readConfig(argc, argv, long_options, jobs);
-    if (!hasConfig) {
+    if (!hasConfig) { // we're only doing command line, if there is no config to work with.
         parseCommandLine(argc, argv, long_options, jobs);
     }
 
@@ -80,7 +80,7 @@ int main(int argc, char* argv[]) {
  * @param argv
  * @param long_options
  * @param work
- * @return if reading the config was successful.
+ * @return if a config file was found.
  */
 bool readConfig(int argc, char* argv[], option* long_options, [[maybe_unused]] std::vector<SplitterOpts> &work) {
     // todo: foreach config entry create splitteropts, validate, and add to vector if valid.

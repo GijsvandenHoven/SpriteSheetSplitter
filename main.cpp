@@ -4,7 +4,7 @@
 #include "util/SplitterOptions.h"
 #include "Splitter.h"
 #include "logging/LoggerTags.hpp"
-#include "struct_mapping.h"
+#include "IO/JSONConfigParser.hpp"
 
 namespace logger = LoggerTags;
 
@@ -23,12 +23,6 @@ std::string& getHELP_STRING() {
 std::string& getOPT_STR() {
     static std::string OPT_STR = "hrsda:i:o::k::c::";
     return OPT_STR;
-}
-
-// This is more rigorously tested by the std::filesystem class further in execution (if the file exists & if it can be loaded).
-// All that matters for now, is if the user _intends_ to run it on a directory pointing to an alleged 'png'.
-bool checkIsPNGDirectory(std::string& dir) {
-    return dir.size() >= 4 && (0 == dir.compare(dir.size() - 4, 4, ".png"));
 }
 
 // SpriteSheetIO.h is agnostic to workload; expecting only a sequence of jobs,
@@ -70,6 +64,8 @@ int main(int argc, char* argv[]) {
     if (!jobs.empty()) {
         Splitter worker;
         worker.work(jobs);
+    } else {
+        std::cout << logger::error << "There are no usable options, stopping.\n";
     }
 
     return 0;
@@ -85,25 +81,36 @@ int main(int argc, char* argv[]) {
  *     // todo: foreach config entry create splitteropts, validate, and add to vector if valid.
  */
 bool readConfig(int argc, char* argv[], option* long_options, std::vector<SplitterOpts> &work) {
-    struct_mapping::reg(&SplitterOpts::inDirectory, "in", struct_mapping::NotEmpty{});
-    struct_mapping::reg(&SplitterOpts::outDirectory, "out", struct_mapping::NotEmpty{});
-    struct_mapping::reg(&SplitterOpts::workAmount, "cap", struct_mapping::Default{std::numeric_limits<int>::max()});
-    // isPNGInDirectory: Is not allowed to be set by JSON, this is a computed property from in directory.
-    struct_mapping::reg(&SplitterOpts::recursive, "recursive", struct_mapping::Default{false});
-    // todo: inverse relationship naming, what do
-    struct_mapping::reg(&SplitterOpts::useSubFoldersInOutput, "singleFolderOutput", struct_mapping::Default{false});
-    struct_mapping::reg(&SplitterOpts::subtractAlphaSpritesFromIndex, "subtractAlphaFromIndex", struct_mapping::Default{false});
 
     const char* OPT_STR = getOPT_STR().c_str();
     int c;
     // check for config file specifically before parsing command line parameters
     while (EOF != (c = getopt_long(argc, argv, OPT_STR, long_options, nullptr))) {
         if (c == 'c') {
-            // todo: read config
-            std::cout << logger::error << "configs are not supported yet.\n";
+            // try to find the config file
+            std::string fileName;
+            if (optarg == nullptr) {
+                fileName = "config.json";
+            } else {
+                fileName = optarg;
+            }
 
-            // todo: call validate.
-            // todo: before returning, report on the total amount of dropped jobs (from validation failures).
+            std::vector<SplitterOpts> unvalidated_work;
+            JSONConfigParser::parseConfig(fileName, unvalidated_work);
+
+            int dropped = 0;
+            for (auto& opt : unvalidated_work) {
+                if (validateOptions(opt)) {
+                    work.emplace_back(opt);
+                } else {
+                    dropped++;
+                }
+            }
+
+            if (dropped) {
+                std::cout << logger::warn << "Dropped " << dropped << " configurations due to invalidity. Proceeding.\n";
+            }
+
             return true;
         }
     }
@@ -131,7 +138,7 @@ void parseCommandLine(int argc, char* argv[], option* long_options, std::vector<
 
     if (optind >= 0 && optind < argc) { // in parameter may be supplied raw instead of as option.
         options.inDirectory = argv[optind];
-        options.isPNGInDirectory = checkIsPNGDirectory(options.inDirectory);
+        options.setIsPNGDirectory(); // in directory is definitively set, compute this boolean.
     }
 
     bool valid = validateOptions(options);
@@ -168,7 +175,7 @@ void parseSingleParameter(int c, SplitterOpts& options) {
                 std::cout << logger::warn << "-i used without parameter. inDirectory will not be set.\n";
             } else {
                 options.inDirectory = optarg;
-                options.isPNGInDirectory = checkIsPNGDirectory(options.inDirectory);
+                options.setIsPNGDirectory();
             }
             break;
         }

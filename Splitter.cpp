@@ -33,10 +33,14 @@ void Splitter::work(std::vector <SplitterOpts> &jobs) {
         }
 
         if (job.isPNGInDirectory) {
+            std::cout << logger::info << "Begin working on file \"" << job.inDirectory << "\"with " << job;
+
             std::string& onlyFile = pngQueue.front();
             split(onlyFile, jobStats, std::cout);
             pngQueue.pop();
         } else {
+            std::cout << logger::info << "Begin working on folder \"" << job.inDirectory << "\" with " << job;
+
             workFolder(job.workAmount, pngQueue, jobStats);
         }
 

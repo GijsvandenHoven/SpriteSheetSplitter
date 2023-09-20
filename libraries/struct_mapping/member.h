@@ -6,12 +6,14 @@
 #include "options/option_default.h"
 #include "options/option_not_empty.h"
 #include "options/option_required.h"
+#include "options/option_remap.h"
 #include "utility.h"
 
 #include <functional>
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <any>
 
 namespace struct_mapping::detail
 {
@@ -199,6 +201,7 @@ public:
 		process_required();
 		process_default(o);
 		process_not_empty(o);
+        process_remap(o);
 		changed = false;
 	}
 
@@ -213,7 +216,9 @@ public:
 	Index ptr_index;
 	bool option_not_empty = false;
 	bool option_required = false;
+    bool option_remap = false;
 	Type type;
+    std::any * remap_func = nullptr;
 
 private:
 	template<
@@ -242,6 +247,13 @@ private:
 			op.template check_option<V>();
 			add_option_required<V>();
 		}
+        else if constexpr (std::is_same_v<Remap<U>, std::decay_t<Op<U>>>)
+        {
+            op.template check_option<V>();
+            add_option_remap<V>();
+
+            remap_func = new std::any(op.get_remapper());
+        }
 	}
 
 	template<
@@ -305,6 +317,12 @@ private:
 	{
 		option_required = true;
 	}
+
+    template<typename V>
+    void add_option_remap()
+    {
+        option_remap = true;
+    }
 
 	template<
 		typename ValueType,
@@ -406,6 +424,37 @@ private:
 			Required<>::check_result(changed, name);
 		}
 	}
+
+    void process_remap(T& o) {
+        if (option_remap)
+        {
+            switch (type)
+            {
+                case Type::Bool: set_remap<bool>(o); break;
+                case Type::Char: set_remap<char>(o); break;
+                case Type::UnsignedChar: set_remap<unsigned char>(o); break;
+                case Type::Short: set_remap<short>(o); break;
+                case Type::UnsignedShort: set_remap<unsigned short>(o); break;
+                case Type::Int: set_remap<int>(o); break;
+                case Type::UnsignedInt: set_remap<unsigned int>(o); break;
+                case Type::Long: set_remap<long>(o); break;
+                case Type::LongLong: set_remap<long long>(o); break;
+                case Type::Float: set_remap<float>(o); break;
+                case Type::Double: set_remap<double>(o); break;
+                case Type::String: set_remap<std::string>(o); break;
+                default:
+                    throw StructMappingException(" todo ");
+            }
+        }
+    }
+
+    template<typename V>
+    void set_remap(T& o)
+    {
+        auto remapper = std::any_cast<std::function<V(const V&)>>(*remap_func);
+        auto& value = o.*ObjectType::template members_ptr<V>[ptr_index];
+        value = remapper(value);
+    }
 
 	template<typename V>
 	void set_default(T& o)

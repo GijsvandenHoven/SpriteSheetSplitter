@@ -1,9 +1,10 @@
 #ifndef SPRITESHEETSPLITTER_SPRITESHEETTYPE_H
 #define SPRITESHEETSPLITTER_SPRITESHEETTYPE_H
-// no longer a member of Splitter: also used in SpriteSheetIO
+
 enum class SpriteSheetType {
     OBJECT = 0,
     CHARACTER = 1,
+    GROUND = 2,
 };
 
 inline std::ostream& operator<<(std::ostream& os, const SpriteSheetType& sst) {
@@ -13,6 +14,9 @@ inline std::ostream& operator<<(std::ostream& os, const SpriteSheetType& sst) {
             break;
         case SpriteSheetType::CHARACTER:
             os << "CHARACTER";
+            break;
+        case SpriteSheetType::GROUND:
+            os << "GROUND";
             break;
     }
     return os;

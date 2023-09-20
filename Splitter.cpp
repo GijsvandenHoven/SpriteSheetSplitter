@@ -114,10 +114,13 @@ void Splitter::split(const std::string &fileDirectory, SpriteSplittingStatus &jo
         return;
     }
 
+    // todo: handle this note.
     // Note to self: for types that are not discernible from sheet dimensions alone, this info could be supplied as optional parameter or function overload (latter needs loading routine above moved to dedicated function).
     // Then transform this into something where the default branch is this code, and supplied parameter simply set the type after calling validSpriteSheet of some dimension.
     SpriteSheetType type;
     if (validSpriteSheet(pngData.width, pngData.height, OBJ_SHEET_ROW)) {
+        // ground and object sheets are indistinguishable from dimensions alone.
+        // One must be assumed, and the other has to be deduced by some rules. e.g. configured pattern matching.
         type = SpriteSheetType::OBJECT;
     } else if (validSpriteSheet(pngData.width, pngData.height, CHAR_SHEET_ROW)) {
         type = SpriteSheetType::CHARACTER;
@@ -139,6 +142,10 @@ void Splitter::split(const std::string &fileDirectory, SpriteSplittingStatus &jo
 
     switch(type) {
         case SpriteSheetType::OBJECT:
+        case SpriteSheetType::GROUND:
+            // these two are exactly the same in splitting, only the way the split is saved is different.
+            // Namely, ground gets an apron of alpha around the split data.
+            // This insertion is part of the saving routine, handled by SpriteSheetIO.
             spriteSize = pngData.width / OBJ_SHEET_ROW;
             spriteCount = (img.size() / 4) / (spriteSize * spriteSize);
             // assign the correct function
@@ -153,8 +160,9 @@ void Splitter::split(const std::string &fileDirectory, SpriteSplittingStatus &jo
             splitFunction = Splitter::splitCharSheet;
             break;
         default: // did you add a new type to the enum?
-            outStream << logger::error << "unknown SpriteSheetType" << type << "\n";
-            exit(-1);
+            // intentionally cerr instead of syncstream, even with syncstream.flush() before exit the output seems to not appear on stdout?
+            std::cerr << logger::error << "unknown SpriteSheetType: " << type << "\n";
+            exit(-2);
     }
 
     // rows per sprite * amount of sprites that fit on the sheet

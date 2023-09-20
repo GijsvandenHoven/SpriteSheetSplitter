@@ -136,6 +136,9 @@ void SpriteSheetIO::saveSplits(SpriteSplittingData& ssd, std::basic_ostream<char
         case SpriteSheetType::CHARACTER:
             saveCharSplits(ssd, folderName, outStream);
             break;
+        case SpriteSheetType::GROUND:
+            saveGroundSplits(ssd, folderName, outStream);
+            break;
         default: // did you add a new SpriteSheetType?
             outStream << logger::threaded_error << "Unknown SpriteSheetType " << ssd.sheetType << "\n";
             exit(-1);
@@ -222,6 +225,79 @@ bool SpriteSheetIO::saveObjectSprite(const unsigned char* sprite, int index, uns
     }
 
     return static_cast<bool>(error);
+}
+
+/**
+ * Given a sprite amount and size,
+ * saves a given collection of byte pointers as single sprite files on disk,
+ * based on the LodePNGState and name of the original SpriteSheet.
+ *
+ * Every byte pointer in the collection points to a (spriteSize) sized row of RGBA bytes.
+ * Assumes every sprite is a square shape.
+ *
+ * Ground sprites, unlike Object sprites, are saved with a ring of alpha around them. (The Exalt Special)
+ *
+ * @param ssd Struct containing all needed information, see SpriteSplittingData.h\n
+ *            In particular, the following is used:\n
+ *            spriteSize: size of a sprite (both width and height)
+ *            spriteCount: amount of sprites
+ *            splitSprites: collection of byte pointers to rows of RGBA pixels. [spriteSize] pointers per sprite.
+ *            originalFileName: name of the SpriteSheet the splits originate from
+ *            stats: stat tracking object
+ */
+void SpriteSheetIO::saveGroundSplits(SpriteSplittingData &ssd, const std::string &folderName, std::basic_ostream<char>& outStream) const {
+    //                                                           + pixels for the apron (4x edge + corners), 4 bytes per pixel), The Exalt Special
+    size_t bytes_per_sprite = ssd.spriteSize * ssd.spriteSize * 4 + (((ssd.spriteSize * 4) + 4) * 4);
+    auto* sprite = new unsigned char[bytes_per_sprite];
+    int skippedSprites = 0;
+    unsigned int bytesPerRow = (ssd.spriteSize + 2) * 4; // + 2 pixels per row due to The Exalt Special. 4 bytes per pixel.
+
+    // Implement Exalt Special, set apron to all 0's. This has to be done only once.
+    // top alpha border:
+    memset(sprite, 0, bytesPerRow);
+    for (int j = 0; j < ssd.spriteSize; ++j) {
+        memset(sprite + bytesPerRow * (j + 1), 0, 4); // left
+        memset(sprite + bytesPerRow * (j + 1) + 4 + ssd.spriteSize * 4, 0, 4); // right
+    }
+    // bottom alpha border:
+    memset(sprite + bytesPerRow * (ssd.spriteSize + 1), 0, bytesPerRow);
+
+    // for each sprite
+    for (int i = 0; i < ssd.spriteCount; ++i) {
+        // for each sprite row
+        for (int j = 0; j < ssd.spriteSize; ++j) {
+            // access the pointer to sprite rows in the data.
+            unsigned char* spriteRow = ssd.splitSprites[i * ssd.spriteSize + j];
+            unsigned int rowSelector = j * ssd.spriteSize * 4;
+            unsigned int apronOffset = bytesPerRow + 4 + (j * 2 * 4); // first row + left border pixel + j times left&right border pixels.
+
+            // set the sprite row
+            memcpy(sprite + rowSelector + apronOffset, spriteRow, ssd.spriteSize * 4);
+        }
+
+        // need to check if a sprite is pure alpha (then don't save it)
+        bool transparent = true;
+        for (int x = 3; transparent && x < bytes_per_sprite; x += 4) {
+            transparent = (0 == sprite[x]);
+        }
+
+        if (transparent) {
+            skippedSprites++;
+        } else {
+            // subtract from the index the amount of alpha sprites we ignored, if this indexing method is user specified.
+            int index = i - (IOOpts_.subtractAlphaFromIndex ? skippedSprites : 0);
+            // unsigned char* sprite is now holding a bytes_per_sprite byte sprite. Finally!
+            // NOTE: We call 'saveObjectSprite' intentionally. The method of saving is indistinguishable from objects (The Exalt Special).
+            // We only need to take care to expand the spriteSize parameter for The Exalt Special. The square of this number is used by lodepng.
+            bool error = saveObjectSprite(sprite, index, ssd.spriteSize + 2, ssd.lodeState, folderName, outStream);
+            ssd.stats.n_save_error +=   error;
+            ssd.stats.n_success +=      ! error;
+        }
+    }
+
+    ssd.stats.n_skipped += skippedSprites;
+
+    delete[] sprite;
 }
 
 /**

@@ -21,7 +21,7 @@ private:
     static void splitCharSheet(SpriteSplittingData& ssd);
 
     // sprite count per row of type
-    static const int OBJ_SHEET_ROW = 16;
+    static const int OBJ_SHEET_ROW = 16; // == GROUND_SHEET_ROW. Ground Sheets also have 16 (1 hex digit) sprites per row.
     static const int CHAR_SHEET_ROW = 7;
 };
 

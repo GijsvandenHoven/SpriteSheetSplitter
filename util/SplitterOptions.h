@@ -1,5 +1,6 @@
 #ifndef SPRITESHEETSPLITTER_SPLITTEROPTIONS_H
 #define SPRITESHEETSPLITTER_SPLITTEROPTIONS_H
+
 #include <string>
 #include <iostream>
 #include <limits>

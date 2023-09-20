@@ -4,6 +4,7 @@
 #include "util/SplitterOptions.h"
 #include "Splitter.h"
 #include "logging/LoggerTags.hpp"
+#include "struct_mapping.h"
 
 namespace logger = LoggerTags;
 
@@ -81,9 +82,18 @@ int main(int argc, char* argv[]) {
  * @param long_options
  * @param work
  * @return if a config file was found.
+ *     // todo: foreach config entry create splitteropts, validate, and add to vector if valid.
  */
-bool readConfig(int argc, char* argv[], option* long_options, [[maybe_unused]] std::vector<SplitterOpts> &work) {
-    // todo: foreach config entry create splitteropts, validate, and add to vector if valid.
+bool readConfig(int argc, char* argv[], option* long_options, std::vector<SplitterOpts> &work) {
+    struct_mapping::reg(&SplitterOpts::inDirectory, "in", struct_mapping::NotEmpty{});
+    struct_mapping::reg(&SplitterOpts::outDirectory, "out", struct_mapping::NotEmpty{});
+    struct_mapping::reg(&SplitterOpts::workAmount, "cap", struct_mapping::Default{std::numeric_limits<int>::max()});
+    // isPNGInDirectory: Is not allowed to be set by JSON, this is a computed property from in directory.
+    struct_mapping::reg(&SplitterOpts::recursive, "recursive", struct_mapping::Default{false});
+    // todo: inverse relationship naming, what do
+    struct_mapping::reg(&SplitterOpts::useSubFoldersInOutput, "singleFolderOutput", struct_mapping::Default{false});
+    struct_mapping::reg(&SplitterOpts::subtractAlphaSpritesFromIndex, "subtractAlphaFromIndex", struct_mapping::Default{false});
+
     const char* OPT_STR = getOPT_STR().c_str();
     int c;
     // check for config file specifically before parsing command line parameters
@@ -92,6 +102,7 @@ bool readConfig(int argc, char* argv[], option* long_options, [[maybe_unused]] s
             // todo: read config
             std::cout << logger::error << "configs are not supported yet.\n";
 
+            // todo: call validate.
             // todo: before returning, report on the total amount of dropped jobs (from validation failures).
             return true;
         }
@@ -212,12 +223,12 @@ void parseSingleParameter(int c, SplitterOpts& options) {
             std::cout << "                           " << "When enabled, creates a subfolder in the output directory,\n";
             std::cout << "                           " << "For every sprite sheet that is being split.\n";
             std::cout << "                           " << "The name of the folder is automatically determined.\n";
-            std::cout << "--subtractalphafromindex (-a)" << "Used when outputting split files.\n";
+            std::cout << "--subtractalphafromindex (-a)\t" << "Used when outputting split files.\n";
             std::cout << "                           " << "When enabled, 'empty' space in the sprite sheet\n";
             std::cout << "                           " << "is subtracted from the index (numerical file name). \n";
             std::cout << "                           " << "Enabling this leads to a contiguous index,\n";
             std::cout << "                           " << "but numbers no longer directly map to positions on the original sheet.\n";
-            std::cout << "--keepworking (-k):        " << "Amount of files to process in a folder before stopping.\n";
+            std::cout << "--keepworking (-k) ('cap' in config):\t" << "Amount of files to process in a folder before stopping.\n";
             std::cout << "                           " << "Defaults to process the entire folder unless specified otherwise.\n";
             std::cout << "                           " << "When a k is specified, this amount of files are processed before halting.\n";
             std::cout << "                           " << "To process specific files in a folder only, use --config.\n";

@@ -72,13 +72,12 @@ int main(int argc, char* argv[]) {
 }
 
 /**
- * todo.
+ * Read from '-c' (defaulting to config.json) a file path to an assumed JSON file, which is parsed into options.
  * @param argc
  * @param argv
  * @param long_options
  * @param work
- * @return if a config file was found.
- *     // todo: foreach config entry create splitteropts, validate, and add to vector if valid.
+ * @return if a config file was read.
  */
 bool readConfig(int argc, char* argv[], option* long_options, std::vector<SplitterOpts> &work) {
 

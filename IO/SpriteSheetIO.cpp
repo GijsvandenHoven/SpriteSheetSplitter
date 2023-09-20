@@ -323,7 +323,7 @@ unsigned int SpriteSheetIO::saveCharSprites(unsigned char *sprites [SPRITES_PER_
             checkLodePNGErrorCode(error, outStream);
         }
 
-        errorCount += error == 0;
+        errorCount += error != 0;
     }
 
     return errorCount;

@@ -287,17 +287,3 @@ bool validateOptions(SplitterOpts& options) {
 
     return true;
 }
-
-// possible options:
-// (no flag provided, just a text on argv[1]): check if `.png`. Then use as --directory or --in depending on result.
-// --directory (-d) OR --in (i) Directory to a folder of spritesheet(s).
-// --recursive (-r) in case of folder, also check folders within folders while working. PNGS in current folder have precedence over sub-folders, i.e. folders checked last.
-// --out (-o): Output directory. Optional. When none specified, output in spritesheets folder.
-// --keepworking (-k): Optional Number. Amount of pngs to process in this folder. Stop when at amount or when run out. Default int_max.
-// --useconfig (-c): Bool. Use config file. has parameter 'dir': Directory to config. Otherwise, looks for 'config.txt (.json?)' in current folder.
-
-// config file:
-// can provide a set of directories and/or files to process.
-// each directory has a -k (optional, default 1).
-// each directory or file has an -o (required)
-// each would create the options struct and call the routine.

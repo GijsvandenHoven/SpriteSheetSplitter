@@ -1,1 +1,2 @@
 add_subdirectory(lodepng)
+add_subdirectory(struct_mapping)

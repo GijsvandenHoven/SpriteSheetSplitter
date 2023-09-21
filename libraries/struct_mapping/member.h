@@ -451,9 +451,9 @@ private:
     template<typename V>
     void set_remap(T& o)
     {
-        auto remapper = std::any_cast<std::function<V(const V&)>>(*remap_func);
+        auto function = std::any_cast<std::function<V(const V&)>>(*remap_func);
         auto& value = o.*ObjectType::template members_ptr<V>[ptr_index];
-        value = remapper(value);
+        value = function(value);
     }
 
 	template<typename V>

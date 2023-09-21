@@ -11,6 +11,18 @@
 #include <exception>
 #include "../logging/LoggerTags.hpp"
 
+/**
+ * Wrapper class around std::regex.
+ *
+ * Handles parsing strings into regex,
+ * specifically strings representing ECMAScript Regex Literals.
+ * https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_Expressions
+ *
+ * The primary purpose of the wrapper is thus checking and converting strings to std::regex.
+
+ * A secondary use is usage of regex in std::cout; the RegexWrapper remembers the input string,
+ * such that operator<<() can display the regex this wrapper represents.
+ */
 class RegexWrapper {
 public:
     RegexWrapper() = delete;

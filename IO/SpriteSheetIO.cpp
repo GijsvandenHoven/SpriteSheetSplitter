@@ -20,13 +20,13 @@ bool SpriteSheetIO::initializeDirectoryIterator(bool shouldBePNG, bool recursive
     const fs::path& inPath = IOOpts_.inDirectory;
 
     if (! fs::exists(inPath)) {
-        std::cout << logger::error << "The provided input directory does not exist:\n\t\t" << inPath << "\n";
+        std::cout << logger::error << "The provided input directory does not exist:\n\t\t" << inPath.string() << "\n";
         return false;
     }
 
     // not a directory and not a png? that's an error
     if (! (shouldBePNG || fs::is_directory(inPath))) {
-        std::cout << logger::error << "The provided input directory is not a png file or folder:\n\t\t" << inPath << "\n";
+        std::cout << logger::error << "The provided input directory is not a png file or folder:\n\t\t" << inPath.string() << "\n";
         return false;
     }
 
@@ -164,7 +164,7 @@ unsigned int SpriteSheetIO::loadPNG(const std::string& fileName, std::vector<uns
  */
 void SpriteSheetIO::saveSplits(SpriteSplittingData& ssd, std::basic_ostream<char>& outStream) const {
 
-    std::string folderName = folderNameFromSheetName(ssd.originalFileName, ssd.sheetType);
+    std::string folderName = folderNameFromSheetName(ssd.originalFileName, ssd.sheetType, outStream);
     std::error_code ec;
     bool cleanedFolder = createCleanDirectory(folderName, ec);
     if (! cleanedFolder || ec.value() != 0) {
@@ -479,7 +479,7 @@ bool SpriteSheetIO::charSpritesAreAlpha(unsigned char* sprites [SPRITES_PER_CHAR
  * @param sheetPath path to the original SpriteSheet file
  * @return suggested folder name by the above description.
  */
-std::string SpriteSheetIO::folderNameFromSheetName(const std::string& sheetPath, const SpriteSheetType& type) {
+std::string SpriteSheetIO::folderNameFromSheetName(const std::string& sheetPath, const SpriteSheetType& type, std::basic_ostream<char>& outStream) {
     // get filename section of sheet path
     std::string fileName = std::move(fs::path(sheetPath).filename().string());
     // lowercase conversion lambda
@@ -494,7 +494,13 @@ std::string SpriteSheetIO::folderNameFromSheetName(const std::string& sheetPath,
             specifier = "chars";
             break;
         }
-        default: return {"error_unknown_sheet_type"};
+        case SpriteSheetType::GROUND: {
+            specifier = "ground";
+            break;
+        }
+        default: {
+            throw std::runtime_error("Unknown SpriteSheetType enum value: " + std::to_string(static_cast<int>(type)));
+        }
     }
 
     std::string lowerName {std::move(toLower(fileName))};

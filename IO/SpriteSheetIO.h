@@ -41,7 +41,7 @@ private:
     unsigned int saveCharSprites(unsigned char* sprites [SPRITES_PER_CHAR], int index, unsigned int spriteSize, lodepng::State& lodeState, const std::string& folderName, std::basic_ostream<char>& outStream) const;
     static void checkLodePNGErrorCode(unsigned int code, std::basic_ostream<char>& outStream);
     static bool charSpritesAreAlpha(unsigned char* sprites [SPRITES_PER_CHAR], unsigned int spriteSize, const unsigned char* elongatedSprite);
-    static std::string folderNameFromSheetName(const std::string& sheetPath, const SpriteSheetType& type);
+    static std::string folderNameFromSheetName(const std::string& sheetPath, const SpriteSheetType& type, std::basic_ostream<char>& outStream);
 };
 
 /**

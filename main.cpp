@@ -292,7 +292,7 @@ bool validateOptions(SplitterOpts& options) {
         options.workAmount = std::numeric_limits<int>::max();
     }
 
-    if (options.isPNGInDirectory && options.workAmount > 0) {
+    if (options.isPNGInDirectory && options.workAmount > 0 && options.workAmount != std::numeric_limits<int>::max()) {
         std::cout << logger::warn << "A .png file was given as input, but -k was specified. -k only works for folders, and will be ignored.\n";
         options.workAmount = 1; // just in case
     }

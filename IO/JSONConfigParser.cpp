@@ -100,12 +100,12 @@ void JSONConfigParser::parseConfig(const std::string &pathToFile, std::vector<Sp
         throw sm::StructMappingException("There is likely a JSON parsing error with '" + pathToFile + "'. Received exception message:\n\t\"" + e.what() + "\"");
     }
 
-
-
     // finally, map the complex types, extracted as some primitive representation, and insert them into soa.
     for (size_t index = 0; index < soa.jobs.size(); ++index) {
         soa.jobs[index].groundFilePattern = RegexWrapper(socta.jobs[index].groundFilePattern);
+        soa.jobs[index].setIsPNGDirectory();
     }
 
     work = std::move(soa.jobs);
+    jsonStream.close();
 }

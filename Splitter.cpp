@@ -68,7 +68,7 @@ void Splitter::work(std::vector <SplitterOpts> &jobs) {
  * @param pngs the queue of FilePaths to SpriteSheets
  * @param jobStats stat tracking object
  */
-void Splitter::workFolder(int workCap, std::queue<std::string> &pngs, SpriteSplittingStatus &jobStats) const {
+void Splitter::workFolder(int workCap, std::queue<std::string> &pngs, SpriteSplittingStatus &jobStats) {
     const int work = std::min(workCap, static_cast<int>(pngs.size()));
 
     SimpleTimer folder("Splitting this folder");
@@ -108,7 +108,7 @@ void Splitter::workFolder(int workCap, std::queue<std::string> &pngs, SpriteSpli
  * @param outStream stream for printing characters. Normally std::cout, but could be std::osyncstream from threading.
  * @param jobStats struct for counting stats of splitting.
  */
-void Splitter::split(const std::string &fileDirectory, SpriteSplittingStatus &jobStats, std::basic_ostream<char> &outStream) const {
+void Splitter::split(const std::string &fileDirectory, SpriteSplittingStatus &jobStats, std::basic_ostream<char> &outStream) {
     const std::string& fileName = fs::path(fileDirectory).filename().string();
     SimpleTimer timer {std::string("Splitting ") + fileName, outStream};
     std::vector<unsigned char> img;
@@ -262,7 +262,7 @@ void Splitter::splitCharSheet(SpriteSplittingData& ssd) {
  * @param height height of the png
  * @param columnCount amount of columns in the png
  * @return whether or not it is a valid SpriteSheetData.
- */
+ */ // static
 bool Splitter::validSpriteSheet(unsigned int width, unsigned int height, unsigned int columnCount) {
     // columns are equally sized?
     float columnSize = static_cast<float>(width) / static_cast<float>(columnCount);

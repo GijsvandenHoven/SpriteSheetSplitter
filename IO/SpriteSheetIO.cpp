@@ -162,9 +162,9 @@ unsigned int SpriteSheetIO::loadPNG(const std::string& fileName, std::vector<uns
  * @param ssd Struct containing all needed information for splits
  * @param outStream stream object for printing. Can be std::cout, might be a synced stream for threading.
  */
-void SpriteSheetIO::saveSplits(SpriteSplittingData& ssd, std::basic_ostream<char>& outStream) const {
+void SpriteSheetIO::saveSplits(SpriteSplittingData& ssd, std::basic_ostream<char>& outStream) {
 
-    std::string folderName = folderNameFromSheetName(ssd.originalFileName, ssd.sheetType, outStream);
+    std::string folderName = folderNameFromSheetName(ssd.originalFileName, ssd.sheetType);
     std::error_code ec;
     bool cleanedFolder = createCleanDirectory(folderName, ec);
     if (! cleanedFolder || ec.value() != 0) {
@@ -173,6 +173,21 @@ void SpriteSheetIO::saveSplits(SpriteSplittingData& ssd, std::basic_ostream<char
         return;
     }
 
+    // Without sub-folders, it is a problem to try to save a sheet type twice.
+    // You would end up overwriting files, due to naming e.g. '0.png' , 'Right_Walk_0.png' for the 1st sprite of the same type.
+    // Note that, while Ground and Object tiles both have [[number]].png as naming,
+    // saveGroundSplits inserts an index offset to avoid collision, if in single-folder-mode.
+    // Hence, this overwriting issue really is only relevant if you re-use the same sheet type without subfolders.
+    bool firstTimeUse = IOOpts_.useIO(ssd.sheetType);
+    bool saveProblem = !(IOOpts_.useSubFolders || firstTimeUse);
+    if (saveProblem) {
+        outStream << logger::threaded_warn << "A sheet of type " << ssd.sheetType << " is about to be saved,\n";
+        outStream << logger::threaded_warn << "however, this will overwrite files that already exist.\n";
+        outStream << logger::threaded_warn << "To avoid this, either disable singleFolderOutput (recommended), or use multiple jobs in JSON configs.\n";
+        outStream << logger::threaded_warn << "The latter option may have a noticeable performance impact.\n";
+    }
+
+    unsigned int oldSavedSprites = ssd.stats.n_success; // used if saveProblem == true.
     switch (ssd.sheetType) {
         case SpriteSheetType::OBJECT:
             saveObjectSplits(ssd, folderName, outStream);
@@ -184,8 +199,18 @@ void SpriteSheetIO::saveSplits(SpriteSplittingData& ssd, std::basic_ostream<char
             saveGroundSplits(ssd, folderName, outStream);
             break;
         default: // did you add a new SpriteSheetType?
-            outStream << logger::threaded_error << "Unknown SpriteSheetType " << ssd.sheetType << "\n";
-            exit(-1);
+            // easiest way to get the thread number in the exception, performance doesn't matter at this point we're crashing.
+            std::stringstream ss;
+            ss << logger::threaded_error << "Unknown SpriteSheetType " << ssd.sheetType << "\n";
+            throw std::logic_error(ss.str());
+    }
+
+    if (saveProblem) { // we just overwrote some files. What's the damage?
+        unsigned int newSavedSprites = ssd.stats.n_success;
+        unsigned int written = newSavedSprites - oldSavedSprites;
+        // count all of these as errors. Note that not necessarily all these files were overwritten.
+        // If the previous sheet of the same type had 10 sprites, and this one has 12 sprites, there are 10 overwrites not 12.
+        ssd.stats.n_save_error += written;
     }
 }
 
@@ -228,7 +253,6 @@ void SpriteSheetIO::saveObjectSplits(SpriteSplittingData &ssd, const std::string
         } else {
             // subtract from the index the amount of alpha sprites we ignored, if this indexing method is user specified.
             int index = i - (IOOpts_.subtractAlphaFromIndex ? skippedSprites : 0);
-            // unsigned char* sprite is now holding a spriteSize * spriteSize * 4 byte sprite. Finally!
             bool error = saveObjectSprite(sprite, index, ssd.spriteSize, ssd.lodeState, folderName, outStream);
             ssd.stats.n_save_error +=   error;
             ssd.stats.n_success +=      ! error;
@@ -264,6 +288,7 @@ bool SpriteSheetIO::saveObjectSprite(const unsigned char* sprite, int index, uns
             outPath /= folderName;
         }
         outPath /= fileName;
+        // as per lodepng documentation, save_file overwrites files without warning. There is no alternative in the library.
         error = lodepng::save_file(encodedPixels, outPath.string());
         checkLodePNGErrorCode(error, outStream);
     }
@@ -330,7 +355,11 @@ void SpriteSheetIO::saveGroundSplits(SpriteSplittingData &ssd, const std::string
         } else {
             // subtract from the index the amount of alpha sprites we ignored, if this indexing method is user specified.
             int index = i - (IOOpts_.subtractAlphaFromIndex ? skippedSprites : 0);
-            // unsigned char* sprite is now holding a bytes_per_sprite byte sprite. Finally!
+            // We want to add a hardcoded 1000 to the index if we are outputting ground to a single folder.
+            // The reason for this is that object sprites are also saved as '{index}.png', thus risking overwriting.
+            // This is only necessary if multiple sheets inhabit the same folder.
+            // Writing multiple sheets of the same type into the same folder is allowed but warned against in this::saveSplits().
+            index += (IOOpts_.useSubFolders ? 0 : 1000);
             // NOTE: We call 'saveObjectSprite' intentionally. The method of saving is indistinguishable from objects (The Exalt Special).
             // We only need to take care to expand the spriteSize parameter for The Exalt Special. The square of this number is used by lodepng.
             bool error = saveObjectSprite(sprite, index, ssd.spriteSize + 2, ssd.lodeState, folderName, outStream);
@@ -439,6 +468,7 @@ unsigned int SpriteSheetIO::saveCharSprites(unsigned char *sprites [SPRITES_PER_
                 outPath /= folderName;
             }
             outPath /= fileName;
+            // as per lodepng documentation, save_file overwrites files without warning. There is no alternative in the library.
             error = lodepng::save_file(encodedPixels, outPath.string());
             checkLodePNGErrorCode(error, outStream);
         }
@@ -479,7 +509,7 @@ bool SpriteSheetIO::charSpritesAreAlpha(unsigned char* sprites [SPRITES_PER_CHAR
  * @param sheetPath path to the original SpriteSheet file
  * @return suggested folder name by the above description.
  */
-std::string SpriteSheetIO::folderNameFromSheetName(const std::string& sheetPath, const SpriteSheetType& type, std::basic_ostream<char>& outStream) {
+std::string SpriteSheetIO::folderNameFromSheetName(const std::string &sheetPath, const SpriteSheetType &type) {
     // get filename section of sheet path
     std::string fileName = std::move(fs::path(sheetPath).filename().string());
     // lowercase conversion lambda

@@ -256,7 +256,7 @@ void parseSingleParameter(int c, SplitterOpts& options) {
             std::cout << "--help (-h):               " << "Display this message\n";
 
             // assume the user either wants to use the program, or get information on commands. Not at the same time!
-            exit(-1);
+            exit(0);
         case '?':
         case ':':
         default:

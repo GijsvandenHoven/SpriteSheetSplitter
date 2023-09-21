@@ -15,8 +15,8 @@ private:
     SpriteSheetIO ssio;
     std::regex ground_matcher; // default initialized regexes match nothing, so we do not need to initialize this.
 
-    void workFolder(int workCap, std::queue<std::string> &pngs, SpriteSplittingStatus &jobStats) const;
-    void split(const std::string &fileDirectory, SpriteSplittingStatus &jobStats, std::basic_ostream<char> &outStream) const;
+    void workFolder(int workCap, std::queue<std::string> &pngs, SpriteSplittingStatus &jobStats);
+    void split(const std::string &fileDirectory, SpriteSplittingStatus &jobStats, std::basic_ostream<char> &outStream);
     static bool validSpriteSheet(unsigned int width, unsigned int height, unsigned int columnCount);
     static void splitObjectSheet(SpriteSplittingData& ssd);
     static void splitCharSheet(SpriteSplittingData& ssd);

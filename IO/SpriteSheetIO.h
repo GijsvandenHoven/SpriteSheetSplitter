@@ -23,7 +23,7 @@ public:
     void setIOOptions(const SplitterOpts &opts);
     void fillPNGQueue(std::queue<std::string>& q);
     static unsigned int loadPNG(const std::string& fileName, std::vector<unsigned char> &buffer, SpriteSheetPNGData& data);
-    void saveSplits(SpriteSplittingData& ssd, std::basic_ostream<char>& outStream) const;
+    void saveSplits(SpriteSplittingData& ssd, std::basic_ostream<char>& outStream);
     [[nodiscard]] inline bool validOptions() const { return optionsOK_; }
 
 private:
@@ -41,7 +41,7 @@ private:
     unsigned int saveCharSprites(unsigned char* sprites [SPRITES_PER_CHAR], int index, unsigned int spriteSize, lodepng::State& lodeState, const std::string& folderName, std::basic_ostream<char>& outStream) const;
     static void checkLodePNGErrorCode(unsigned int code, std::basic_ostream<char>& outStream);
     static bool charSpritesAreAlpha(unsigned char* sprites [SPRITES_PER_CHAR], unsigned int spriteSize, const unsigned char* elongatedSprite);
-    static std::string folderNameFromSheetName(const std::string& sheetPath, const SpriteSheetType& type, std::basic_ostream<char>& outStream);
+    static std::string folderNameFromSheetName(const std::string &sheetPath, const SpriteSheetType &type);
 };
 
 /**

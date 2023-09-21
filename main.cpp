@@ -2,6 +2,7 @@
 #include <getopt.h>
 #include <vector>
 #include "util/SplitterOptions.h"
+#include "util/RegexWrapper.hpp"
 #include "Splitter.h"
 #include "logging/LoggerTags.hpp"
 #include "IO/JSONConfigParser.hpp"
@@ -21,7 +22,7 @@ std::string& getHELP_STRING() {
 
 // used by getopt, getopt_long etc. each character is the short name of an option. Colon after means it has a parameter. Double colon means optional parameter.
 std::string& getOPT_STR() {
-    static std::string OPT_STR = "hrsda:i:o::k::c::";
+    static std::string OPT_STR = "hrsda:i:o::g::k::c::";
     return OPT_STR;
 }
 
@@ -41,6 +42,7 @@ int main(int argc, char* argv[]) {
             {"in",          required_argument,  nullptr, 'i'}, // equivalent to -d
             {"recursive",   no_argument,        nullptr, 'r'},
             {"out",         optional_argument,  nullptr, 'o'},
+            {"groundPattern", optional_argument, nullptr, 'g'},
             {"keepworking", optional_argument,  nullptr, 'k'},
             {"useconfig",   optional_argument,  nullptr, 'c'},
             {"singleFolderOutput", no_argument, nullptr, 's'},
@@ -216,6 +218,13 @@ void parseSingleParameter(int c, SplitterOpts& options) {
         case 'a':
             options.subtractAlphaSpritesFromIndex = true;
             break;
+        case 'g':
+            if (optarg == nullptr) {
+                std::cout << logger::warn << "-g specified without regex literal string. Not setting -g.\n";
+            } else {
+                options.groundFilePattern = RegexWrapper(std::string(optarg));
+            }
+            break;
         case 'h':
             std::cout << "--directory (-d):          " << "Input directory.\n";
             std::cout << "                           " << "When this is a .png file, processes just this file.\n";
@@ -241,6 +250,10 @@ void parseSingleParameter(int c, SplitterOpts& options) {
             std::cout << "--useconfig (-c):          " << "Use a config file instead of command line options.\n";
             std::cout << "                           " << "Expects either a 'config.json' in the same directory,\n";
             std::cout << "                           " << "or a parameter specifying the config directory.\n";
+            std::cout << "--groundPattern (-g):      " << "String representing an ECMAScript RegEx literal.\n";
+            std::cout << "                           " << "When a sprite sheet matches the RegEx, it is processed as a ground file.\n";
+            std::cout << "                           " << "This is necessary because Object and Ground sheets are indistinguishable\n";
+            std::cout << "                           " << "By dimensions. When unspecified, the default value used is '/ground/i'.\n";
             std::cout << "--help (-h):               " << "Display this message\n";
 
             // assume the user either wants to use the program, or get information on commands. Not at the same time!

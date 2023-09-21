@@ -5,36 +5,37 @@
 namespace logger = LoggerTags;
 
 /**
- * Validates the given path and sets the inFilePath member variable. Note, the member variable is set even if invalid.
- * @param pathName the pathName to set the in path to.
+ * Validates the given IOOpts.inDirectory, and initializes the directoryIterator with this.
+ * The directoryIterator pointer is always deleted, and left as nullptr if the IOOpts were invalid.
+ * @param inPath the inPath to set the in path to.
  * @param shouldBePNG whether the given path should be a .png file (or a directory if not).
  * @param recursive (only used for directory paths) whether folders within this folder are also to be considered.
- * @return if the path was valid.
+ * @return whether the initialisation succeeded.
  */
-bool SpriteSheetIO::setInPath(const std::string& pathName, bool shouldBePNG, bool recursive) {
+bool SpriteSheetIO::initializeDirectoryIterator(bool shouldBePNG, bool recursive) {
 
     delete directoryIterator_;
     directoryIterator_ = nullptr;
-    // a note about using non-UTF8 strings as path name. This means technically not all path names are supported, but lodePNG (the png library this uses) does not support this either. There are ways around that (obtain the encoded png bytes externally), but that is only worth doing if the need ever arises.
-    inFilePath_ = fs::path(pathName).make_preferred();
 
-    if (! fs::exists(inFilePath_)) {
-        std::cout << logger::error << "The provided input directory does not exist:\n\t\t" << inFilePath_ << "\n";
+    const fs::path& inPath = IOOpts_.inDirectory;
+
+    if (! fs::exists(inPath)) {
+        std::cout << logger::error << "The provided input directory does not exist:\n\t\t" << inPath << "\n";
         return false;
     }
 
     // not a directory and not a png? that's an error
-    if (! (shouldBePNG || fs::is_directory(inFilePath_))) {
-        std::cout << logger::error << "The provided input directory is not a png file or folder:\n\t\t" << inFilePath_ << "\n";
+    if (! (shouldBePNG || fs::is_directory(inPath))) {
+        std::cout << logger::error << "The provided input directory is not a png file or folder:\n\t\t" << inPath << "\n";
         return false;
     }
 
-    if (fs::is_directory(inFilePath_)) {
+    if (fs::is_directory(inPath)) {
         if (recursive) {
-            auto *iterator = new fs::recursive_directory_iterator(inFilePath_);
+            auto *iterator = new fs::recursive_directory_iterator(inPath);
             directoryIterator_ = new recursive_directory_iterator(iterator);
         } else {
-            auto *iterator = new fs::directory_iterator(inFilePath_);
+            auto *iterator = new fs::directory_iterator(inPath);
             directoryIterator_ = new directory_iterator(iterator);
         }
     }
@@ -43,47 +44,90 @@ bool SpriteSheetIO::setInPath(const std::string& pathName, bool shouldBePNG, boo
 }
 
 /**
- * Validates the given path and sets the outFilePath member variable. Note that the member variable is set even if the path is invalid.
- * @param pathName the path to validate and set
- * @return whether the path was valid.
+ * Validates the IOOpts outDirectory path.
+ *
+ * outDirectory should:
+ * 1) exist
+ * 2) be a direcotory
+ *
+ * There exists an exception to (2), namely if inDirectory == outDirectory.
+ * This happens for cases when the input is a single file and no output folder is specified.
+ * In such cases, the user wants to just output the result in the same folder as the input.
+ * This is allowed to keep command line args simple, for this low-intensity use case.
+ *
+ * When this exception occurs, a warning is logged and the outDirectory is modified to the parent folder.
+ *
+ * @param outFilePath the path to validate and set
+ * @return whether the path was valid (After modification).
  */
-bool SpriteSheetIO::setOutPath(const std::string &pathName) {
-    outFilePath_ = fs::path(pathName).make_preferred();
+bool SpriteSheetIO::initializeOutPath() {
 
-    if(! fs::exists(outFilePath_)) {
-        std::cout << logger::warn << "The provided output directory does not exist.\n\t\t" << outFilePath_ << "\n";
+    const fs::path& outFilePath = IOOpts_.outDirectory;
+
+    // (1)
+    if(! fs::exists(outFilePath)) {
+        std::cout << logger::warn << "The provided output directory does not exist.\n\t\t" << outFilePath.string() << "\n";
         std::cout << logger::warn << "This directory will be created.\n";
         std::error_code ec;
-        fs::create_directory(outFilePath_, ec);
+        fs::create_directory(outFilePath, ec);
 
-        if (ec.value() != 0) return false;
+        if (ec.value() != 0) {
+            std::cout << logger::error << "Could not create this directory:\n\t\t" << outFilePath.string() << "\n";
+            return false;
+        }
     }
 
-    if (! fs::is_directory(outFilePath_)) {
-        outFilePath_ = outFilePath_.parent_path();
+    // (2 - exception)
+    if ((! fs::is_directory(IOOpts_.outDirectory)) && IOOpts_.inDirectory == IOOpts_.outDirectory) {
+        std::cout << logger::warn << "The folder of the input file will be used as output directory.\n";
+        IOOpts_.outDirectory = outFilePath.parent_path();
     }
 
-    if (! fs::is_directory(outFilePath_)) {
-        std::cout << logger::error << "The output directory must be a folder.\n\t\t" << outFilePath_ << "\n";
+    // (2)
+    if (! fs::is_directory(outFilePath)) {
+        std::cout << logger::error << "The output directory must be a folder.\n\t\t" << outFilePath << "\n";
         return false;
     }
 
     return true;
 }
 
-void SpriteSheetIO::setIOOptions(const IOOptions &opts) {
-    IOOpts_ = opts;
+/**
+ * Applies IO Options.
+ * This will:
+ *
+ * 1) Internalize some booleans for use during operation, e.g. sprite saving, output folder creation.
+ * 2) configure important member variables for operation, by taking IOOptions as input.
+ * 3) set the optionsOK_ bool.
+ * 4) log an error if optionsOK_ is false.
+ * @param opts
+ */
+void SpriteSheetIO::setIOOptions(const SplitterOpts &opts) {
+    IOOpts_ = IOOptions(opts);
+
+    bool directoryIteratorReady = initializeDirectoryIterator(opts.isPNGInDirectory, opts.recursive);
+    bool outPathOK = initializeOutPath();
+
+    optionsOK_ = directoryIteratorReady && outPathOK;
+
+    if (! optionsOK_) {
+        std::cout << logger::error << "Something went wrong configuring the I/O. Please check the program output.\n";
+        std::cout << "\tIn path provided:\t" << opts.inDirectory << "\n";
+        std::cout << "\tOut path provided:\t" << opts.outDirectory << "\n";
+    }
 }
 
 /**
  * Creates a queue of all png files in the directory/directories represented by directoryIterator.
- * When directoryIterator is nullptr, uses only the InfilePath instead (e.g. when infile is a .png itself)
+ * When directoryIterator is nullptr, uses only the input path instead (e.g. when infile is a .png itself)
  *
  * @param q the queue to fill
  */
 void SpriteSheetIO::fillPNGQueue(std::queue<std::string> &q) {
     if (directoryIterator_ == nullptr) {
-        q.emplace(std::move(inFilePath_.string()));
+        if (IOOpts_.inDirectory.extension() == ".png") {
+            q.emplace(std::move(IOOpts_.inDirectory.string()));
+        }
     } else {
         for (auto& dirIter = *directoryIterator_ ; ! dirIter.end() ; ++dirIter) {
             auto& dir = *dirIter;
@@ -215,7 +259,7 @@ bool SpriteSheetIO::saveObjectSprite(const unsigned char* sprite, int index, uns
     error = lodepng::encode(encodedPixels, sprite, spriteSize, spriteSize, lodeState);
     checkLodePNGErrorCode(error, outStream);
     if (!error) {
-        std::filesystem::path outPath = outFilePath_;
+        std::filesystem::path outPath = IOOpts_.outDirectory;
         if (IOOpts_.useSubFolders) { // insert a subfolder in the directory if specified by options.
             outPath /= folderName;
         }
@@ -390,7 +434,7 @@ unsigned int SpriteSheetIO::saveCharSprites(unsigned char *sprites [SPRITES_PER_
         checkLodePNGErrorCode(error, outStream);
 
         if (!error) {
-            std::filesystem::path outPath = outFilePath_;
+            std::filesystem::path outPath = IOOpts_.outDirectory;
             if (IOOpts_.useSubFolders) { // insert a subfolder in the directory if specified by options.
                 outPath /= folderName;
             }
@@ -513,13 +557,13 @@ std::string SpriteSheetIO::folderNameFromSheetName(const std::string& sheetPath,
  */
 bool SpriteSheetIO::createCleanDirectory(const std::string& dir, std::error_code& ec) const noexcept {
      if (IOOpts_.useSubFolders) {
-        if (fs::exists(outFilePath_ / dir)) {
-            fs::remove_all(outFilePath_ / dir, ec);
+        if (fs::exists(IOOpts_.outDirectory / dir)) {
+            fs::remove_all(IOOpts_.outDirectory / dir, ec);
         }
 
         if (ec.value() != 0) return false;
 
-        return fs::create_directory(outFilePath_ / dir, ec);
+        return fs::create_directory(IOOpts_.outDirectory / dir, ec);
      } else { // shared folder case, do not delete other threads' work!!
          return true;
      }

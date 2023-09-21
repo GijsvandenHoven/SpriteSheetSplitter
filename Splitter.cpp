@@ -12,17 +12,17 @@ void Splitter::work(std::vector <SplitterOpts> &jobs) {
 
     int jobCounter = 0;
     for (auto& job : jobs) {
-        // todo: to really push the concurrency, any job could be its own process.
-        ground_matcher = job.groundFilePattern.get();
+        // NOTE: to really push the concurrency, any job could be its own process.
+        // It looks like this won't be necessary due to performance at this time.
 
-        bool inPathOK = ssio.setInPath(job.inDirectory, job.isPNGInDirectory, job.recursive);
-        bool outPathOK = ssio.setOutPath(job.outDirectory);
-        ssio.setIOOptions(IOOptions(job)); // todo: should inPath and outPath and this check all be part of IOOptions?
-        // only work the job if the input is OK. The only input error that can happen from now on is a png decode error or malformed SpriteSheet.
-        if (! (inPathOK && outPathOK)) {
-            std::cout << logger::error << "Something went wrong with setting the in or out path for this job. Please check the program output.\n";
-            std::cout << "\tIn path provided:\t" << job.inDirectory << "\n";
-            std::cout << "\tOut path provided:\t" << job.outDirectory << "\n";
+        // Scatter the relevant options to Splitter and SpriteSheetIO
+        ground_matcher = job.groundFilePattern.get();
+        ssio.setIOOptions(job);
+
+        // If the IO cannot work with this (most likely the file paths were bad), skip the job.
+        if (! ssio.validOptions()) {
+            std::cout << logger::error << "This job has invalid IO settings\n";
+            std::cout << logger::error << "This job will be skipped.\n";
             continue;
         }
 
@@ -30,8 +30,10 @@ void Splitter::work(std::vector <SplitterOpts> &jobs) {
         ssio.fillPNGQueue(pngQueue);
 
         if (pngQueue.empty()) {
-            std::cout << logger::warn << "Zero png files were found from the input directory:";
+            std::cout << logger::error << "Zero '.png' files were found in input path:";
             std::cout << "\n\t\t" << job.inDirectory << "\n";
+            std::cout << logger::error << "This job will be skipped.\n";
+            continue;
         }
 
         if (job.isPNGInDirectory) {
@@ -47,9 +49,14 @@ void Splitter::work(std::vector <SplitterOpts> &jobs) {
         }
 
         std::cout << logger::info << "DONE with job " << ++jobCounter << " out of " << jobs.size() << "\n";
+
+        // assert PNG Queue is empty.
+        if (! pngQueue.empty()) {
+            throw std::logic_error("End of job reached but PNG queue not empty.");
+        }
     }
 
-    std::cout << jobStats;
+    std::cout << logger::info << "COMPLETED all pending jobs. " << jobStats;
 }
 
 /**

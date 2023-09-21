@@ -12,7 +12,6 @@ namespace logger = LoggerTags;
 
 bool once_flag = false;
 
-// todo: suboptimal, leads to reading the whole stream twice. . . need derived structs and union type maybe?
 struct GroundFilePatternHandler {
     std::string regex_literal;
 };

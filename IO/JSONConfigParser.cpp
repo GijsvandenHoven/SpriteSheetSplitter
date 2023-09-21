@@ -10,12 +10,39 @@
 namespace sm = struct_mapping;
 namespace logger = LoggerTags;
 
+/**
+ * The JSON-to-struct mappings need to be registered to the struct_mapping library only once.
+ */
 bool once_flag = false;
 
-struct GroundFilePatternHandler {
-    std::string regex_literal;
+/**
+ * The config is represented as an Object with a field 'jobs'.
+ * 'jobs' holds an Array of SplitterOpt objects represented as JSON.
+ */
+struct SplitterOptsArray {
+    std::vector<SplitterOpts> jobs;
 };
 
+/**
+ * This struct is necessary to extract the ECMAScript Regex Literal in SplitterOpts,
+ * because the struct_mapping library is not capable to natively wrap the std::string to a RegexWrapper class.
+ * And it will naturally throw an error if you try to insert a string into it.
+ */
+struct SplitterOptsComplexTypeHandler {
+    std::string groundFilePattern;
+};
+
+/** Because the config is an array of jobs, the handler has to follow the same convention. */
+struct SplitterOptsComplexTypeHandlerArray {
+    std::vector<SplitterOptsComplexTypeHandler> jobs;
+};
+
+/**
+ * Register to the struct_mapping library mappings from JSON to struct.
+ * SplitterOpts, SplitterOptsArray, SplitterOptsComplexTypeHandler, and SplitterOptsComplexTypeHandlerArray are registered.
+ *
+ * This function needs to be called only once, and the global variable once_flag ensures this.
+ */
 void registerJSONMappings() {
     if (once_flag) return;
     once_flag = true;
@@ -32,8 +59,11 @@ void registerJSONMappings() {
     sm::reg(&SplitterOpts::useSubFoldersInOutput, "singleFolderOutput", sm::Default{true}, sm::Remap{invert});
     sm::reg(&SplitterOpts::subtractAlphaSpritesFromIndex, "subtractAlphaFromIndex", sm::Default{false});
 
+    sm::reg(&SplitterOptsArray::jobs, "jobs", sm::Required{});
+    sm::reg(&SplitterOptsComplexTypeHandlerArray::jobs, "jobs", sm::Required{});
+
     // groundFilePattern shall be handled in two steps: Extract the string, then manually insert the wrapper.
-    sm::reg(&GroundFilePatternHandler::regex_literal, "groundFilePattern", sm::Default{"/ground/i"});
+    sm::reg(&SplitterOptsComplexTypeHandler::groundFilePattern, "groundFilePattern", sm::Default{"/ground/i"});
 }
 
 /**
@@ -52,21 +82,30 @@ void JSONConfigParser::parseConfig(const std::string &pathToFile, std::vector<Sp
         exit(-1); // We will not proceed with other files or command line args, fix your file please :)
     }
 
-    // todo: use library differently if array-like config, for now it's just a single json object.
-    SplitterOpts s;
-    GroundFilePatternHandler g;
+    SplitterOptsArray soa;
+    SplitterOptsComplexTypeHandlerArray socta;
     try {
-        sm::map_json_to_struct(s, jsonStream);
+        sm::map_json_to_struct(soa, jsonStream);
         // reset the stream back to the start.
         jsonStream.clear();
         jsonStream.seekg(0);
-        // parse the JSON again, extracting the regex literal.
-        sm::map_json_to_struct(g, jsonStream);
+        // parse the JSON again, extracting the complex types.
+        sm::map_json_to_struct(socta, jsonStream);
 
-        s.groundFilePattern = RegexWrapper(g.regex_literal);
+        if (soa.jobs.size() != socta.jobs.size()) {
+            // This should be impossible due to every job having a groundFilePattern assigned: The field is optional but has a default assignment.
+            throw sm::StructMappingException("job reading mismatch\n");
+        }
     } catch (sm::StructMappingException& e) {
         throw sm::StructMappingException("There is likely a JSON parsing error with '" + pathToFile + "'. Received exception message:\n\t\"" + e.what() + "\"");
     }
 
-    work.emplace_back(s);
+
+
+    // finally, map the complex types, extracted as some primitive representation, and insert them into soa.
+    for (size_t index = 0; index < soa.jobs.size(); ++index) {
+        soa.jobs[index].groundFilePattern = RegexWrapper(socta.jobs[index].groundFilePattern);
+    }
+
+    work = std::move(soa.jobs);
 }

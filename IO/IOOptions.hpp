@@ -10,7 +10,7 @@
 struct IOOptions {
 
     // default-constructed fs::path are empty string. This is fine, they will fail all checks such as fs::is_directory and fs::exists.
-    IOOptions() : subtractAlphaFromIndex(false), useSubFolders(false) {}
+    IOOptions() : inDirectory(), outDirectory(), subtractAlphaFromIndex(false), useSubFolders(false) {}
 
     explicit IOOptions(const SplitterOpts & splitterOpts)
         :   inDirectory(std::filesystem::path(splitterOpts.inDirectory).make_preferred()),

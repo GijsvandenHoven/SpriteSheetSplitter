@@ -13,6 +13,7 @@ public:
 
 private:
     SpriteSheetIO ssio;
+    std::regex ground_matcher; // default initialized regexes match nothing, so we do not need to initialize this.
 
     void workFolder(int workCap, std::queue<std::string> &pngs, SpriteSplittingStatus &jobStats) const;
     void split(const std::string &fileDirectory, SpriteSplittingStatus &jobStats, std::basic_ostream<char> &outStream) const;

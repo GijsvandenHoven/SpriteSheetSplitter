@@ -13,9 +13,11 @@ void Splitter::work(std::vector <SplitterOpts> &jobs) {
     int jobCounter = 0;
     for (auto& job : jobs) {
         // todo: to really push the concurrency, any job could be its own process.
+        ground_matcher = job.groundFilePattern.get();
+
         bool inPathOK = ssio.setInPath(job.inDirectory, job.isPNGInDirectory, job.recursive);
         bool outPathOK = ssio.setOutPath(job.outDirectory);
-        ssio.setIOOptions(IOOptions(job));
+        ssio.setIOOptions(IOOptions(job)); // todo: should inPath and outPath and this check all be part of IOOptions?
         // only work the job if the input is OK. The only input error that can happen from now on is a png decode error or malformed SpriteSheet.
         if (! (inPathOK && outPathOK)) {
             std::cout << logger::error << "Something went wrong with setting the in or out path for this job. Please check the program output.\n";
@@ -100,7 +102,8 @@ void Splitter::workFolder(int workCap, std::queue<std::string> &pngs, SpriteSpli
  * @param jobStats struct for counting stats of splitting.
  */
 void Splitter::split(const std::string &fileDirectory, SpriteSplittingStatus &jobStats, std::basic_ostream<char> &outStream) const {
-    SimpleTimer timer {"Splitting this file", outStream};
+    const std::string& fileName = fs::path(fileDirectory).filename().string();
+    SimpleTimer timer {std::string("Splitting ") + fileName, outStream};
     std::vector<unsigned char> img;
     SpriteSheetPNGData pngData;
 
@@ -114,14 +117,13 @@ void Splitter::split(const std::string &fileDirectory, SpriteSplittingStatus &jo
         return;
     }
 
-    // todo: handle this note.
-    // Note to self: for types that are not discernible from sheet dimensions alone, this info could be supplied as optional parameter or function overload (latter needs loading routine above moved to dedicated function).
-    // Then transform this into something where the default branch is this code, and supplied parameter simply set the type after calling validSpriteSheet of some dimension.
     SpriteSheetType type;
     if (validSpriteSheet(pngData.width, pngData.height, OBJ_SHEET_ROW)) {
         // ground and object sheets are indistinguishable from dimensions alone.
         // One must be assumed, and the other has to be deduced by some rules. e.g. configured pattern matching.
-        type = SpriteSheetType::OBJECT;
+        bool isGround = std::regex_search(fileName, ground_matcher);
+
+        type = isGround ? SpriteSheetType::GROUND :  SpriteSheetType::OBJECT;
     } else if (validSpriteSheet(pngData.width, pngData.height, CHAR_SHEET_ROW)) {
         type = SpriteSheetType::CHARACTER;
     } else {

@@ -169,9 +169,9 @@ void Splitter::split(const std::string &fileDirectory, SpriteSplittingStatus &jo
             splitFunction = Splitter::splitCharSheet;
             break;
         default: // did you add a new type to the enum?
-            // intentionally cerr instead of syncstream, even with syncstream.flush() before exit the output seems to not appear on stdout?
-            std::cerr << logger::error << "unknown SpriteSheetType: " << type << "\n";
-            exit(-2);
+            std::stringstream ss; // easiest way to stringify SpriteSheetType. We're crashing anwyway, performance loss is whatever.
+            ss << "unknown SpriteSheetType: " << type << "\n";
+            throw std::logic_error(ss.str());
     }
 
     // rows per sprite * amount of sprites that fit on the sheet

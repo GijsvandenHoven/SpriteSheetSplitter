@@ -163,7 +163,6 @@ void parseCommandLine(int argc, char* argv[], option* long_options, std::vector<
  * @param c the (short) name of the command.
  * @param options struct to place any extracted parameters into.
  */
- //todo: with configs, optarg should not be used directly here (const char* instead, with the command line version passing optarg)
 void parseSingleParameter(int c, SplitterOpts& options) {
     switch (c) {
         case 'd':

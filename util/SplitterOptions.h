@@ -1,5 +1,6 @@
 #ifndef SPRITESHEETSPLITTER_SPLITTEROPTIONS_H
 #define SPRITESHEETSPLITTER_SPLITTEROPTIONS_H
+
 #include <string>
 #include <iostream>
 #include <limits>
@@ -14,16 +15,23 @@ struct SplitterOpts {
     bool subtractAlphaSpritesFromIndex;
 
     SplitterOpts() : workAmount(0), isPNGInDirectory(false), recursive(false), useSubFoldersInOutput(true), subtractAlphaSpritesFromIndex(false) {}
+
+    // This is more rigorously tested by the std::filesystem class further in execution (if the file exists & if it can be loaded).
+    // All that matters for now, is if the user _intends_ to run it on a directory pointing to an alleged 'png'.
+    inline void setIsPNGDirectory() {
+        isPNGInDirectory = inDirectory.size() >= 4 && (0 == inDirectory.compare(inDirectory.size() - 4, 4, ".png"));
+    }
 };
 
 inline std::ostream&operator<<(std::ostream &o, const SplitterOpts& s) {
-    o << "inDir: " << s.inDirectory << "\n";
-    o << "outDir: " << s.outDirectory << "\n";
-    o << "workAmount: " << (s.workAmount == std::numeric_limits<int>::max() ? "infinite" : std::to_string(s.workAmount)) << "\n";
-    o << "isPathToPNG?: " << (s.isPNGInDirectory ? "true" : "false") << "\n";
-    o << "recursive?: " << (s.recursive ? "true" : "false") << "\n";
-    o << "useSubFoldersInOutput?: " << (s.useSubFoldersInOutput ? "true" : "false") << "\n";
-    o << "subtractAlphaSpritesFromIndex?: " << (s.subtractAlphaSpritesFromIndex ? "true" : "false") << "\n";
+    o << "SplitterOptions:\n";
+    o << "\tinDir: " << s.inDirectory << "\n";
+    o << "\toutDir: " << s.outDirectory << "\n";
+    o << "\tworkAmount: " << (s.workAmount == std::numeric_limits<int>::max() ? "infinite" : std::to_string(s.workAmount)) << "\n";
+    o << "\tisPathToPNG?: " << (s.isPNGInDirectory ? "true" : "false") << "\n";
+    o << "\trecursive?: " << (s.recursive ? "true" : "false") << "\n";
+    o << "\tuseSubFoldersInOutput?: " << (s.useSubFoldersInOutput ? "true" : "false") << "\n";
+    o << "\tsubtractAlphaSpritesFromIndex?: " << (s.subtractAlphaSpritesFromIndex ? "true" : "false") << "\n";
     return o;
 }
 

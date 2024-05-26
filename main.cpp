@@ -4,6 +4,7 @@
 #include "util/SplitterOptions.h"
 #include "Splitter.h"
 #include "logging/LoggerTags.hpp"
+#include "IO/JSONConfigParser.hpp"
 
 namespace logger = LoggerTags;
 
@@ -22,12 +23,6 @@ std::string& getHELP_STRING() {
 std::string& getOPT_STR() {
     static std::string OPT_STR = "hrsda:i:o::k::c::";
     return OPT_STR;
-}
-
-// This is more rigorously tested by the std::filesystem class further in execution (if the file exists & if it can be loaded).
-// All that matters for now, is if the user _intends_ to run it on a directory pointing to an alleged 'png'.
-bool checkIsPNGDirectory(std::string& dir) {
-    return dir.size() >= 4 && (0 == dir.compare(dir.size() - 4, 4, ".png"));
 }
 
 // SpriteSheetIO.h is agnostic to workload; expecting only a sequence of jobs,
@@ -62,37 +57,59 @@ int main(int argc, char* argv[]) {
 
     std::vector<SplitterOpts> jobs;
     bool hasConfig = readConfig(argc, argv, long_options, jobs);
-    if (!hasConfig) {
+    if (!hasConfig) { // we're only doing command line, if there is no config to work with.
         parseCommandLine(argc, argv, long_options, jobs);
     }
 
     if (!jobs.empty()) {
         Splitter worker;
         worker.work(jobs);
+    } else {
+        std::cout << logger::error << "There are no usable options, stopping.\n";
     }
 
     return 0;
 }
 
 /**
- * todo.
+ * Read from '-c' (defaulting to config.json) a file path to an assumed JSON file, which is parsed into options.
  * @param argc
  * @param argv
  * @param long_options
  * @param work
- * @return if reading the config was successful.
+ * @return if a config file was read.
  */
-bool readConfig(int argc, char* argv[], option* long_options, [[maybe_unused]] std::vector<SplitterOpts> &work) {
-    // todo: foreach config entry create splitteropts, validate, and add to vector if valid.
+bool readConfig(int argc, char* argv[], option* long_options, std::vector<SplitterOpts> &work) {
+
     const char* OPT_STR = getOPT_STR().c_str();
     int c;
     // check for config file specifically before parsing command line parameters
     while (EOF != (c = getopt_long(argc, argv, OPT_STR, long_options, nullptr))) {
         if (c == 'c') {
-            // todo: read config
-            std::cout << logger::error << "configs are not supported yet.\n";
+            // try to find the config file
+            std::string fileName;
+            if (optarg == nullptr) {
+                fileName = "config.json";
+            } else {
+                fileName = optarg;
+            }
 
-            // todo: before returning, report on the total amount of dropped jobs (from validation failures).
+            std::vector<SplitterOpts> unvalidated_work;
+            JSONConfigParser::parseConfig(fileName, unvalidated_work);
+
+            int dropped = 0;
+            for (auto& opt : unvalidated_work) {
+                if (validateOptions(opt)) {
+                    work.emplace_back(opt);
+                } else {
+                    dropped++;
+                }
+            }
+
+            if (dropped) {
+                std::cout << logger::warn << "Dropped " << dropped << " configurations due to invalidity. Proceeding.\n";
+            }
+
             return true;
         }
     }
@@ -120,7 +137,7 @@ void parseCommandLine(int argc, char* argv[], option* long_options, std::vector<
 
     if (optind >= 0 && optind < argc) { // in parameter may be supplied raw instead of as option.
         options.inDirectory = argv[optind];
-        options.isPNGInDirectory = checkIsPNGDirectory(options.inDirectory);
+        options.setIsPNGDirectory(); // in directory is definitively set, compute this boolean.
     }
 
     bool valid = validateOptions(options);
@@ -157,7 +174,7 @@ void parseSingleParameter(int c, SplitterOpts& options) {
                 std::cout << logger::warn << "-i used without parameter. inDirectory will not be set.\n";
             } else {
                 options.inDirectory = optarg;
-                options.isPNGInDirectory = checkIsPNGDirectory(options.inDirectory);
+                options.setIsPNGDirectory();
             }
             break;
         }
@@ -212,12 +229,12 @@ void parseSingleParameter(int c, SplitterOpts& options) {
             std::cout << "                           " << "When enabled, creates a subfolder in the output directory,\n";
             std::cout << "                           " << "For every sprite sheet that is being split.\n";
             std::cout << "                           " << "The name of the folder is automatically determined.\n";
-            std::cout << "--subtractalphafromindex (-a)" << "Used when outputting split files.\n";
+            std::cout << "--subtractalphafromindex (-a)\t" << "Used when outputting split files.\n";
             std::cout << "                           " << "When enabled, 'empty' space in the sprite sheet\n";
             std::cout << "                           " << "is subtracted from the index (numerical file name). \n";
             std::cout << "                           " << "Enabling this leads to a contiguous index,\n";
             std::cout << "                           " << "but numbers no longer directly map to positions on the original sheet.\n";
-            std::cout << "--keepworking (-k):        " << "Amount of files to process in a folder before stopping.\n";
+            std::cout << "--keepworking (-k) ('cap' in config):\t" << "Amount of files to process in a folder before stopping.\n";
             std::cout << "                           " << "Defaults to process the entire folder unless specified otherwise.\n";
             std::cout << "                           " << "When a k is specified, this amount of files are processed before halting.\n";
             std::cout << "                           " << "To process specific files in a folder only, use --config.\n";
@@ -270,17 +287,3 @@ bool validateOptions(SplitterOpts& options) {
 
     return true;
 }
-
-// possible options:
-// (no flag provided, just a text on argv[1]): check if `.png`. Then use as --directory or --in depending on result.
-// --directory (-d) OR --in (i) Directory to a folder of spritesheet(s).
-// --recursive (-r) in case of folder, also check folders within folders while working. PNGS in current folder have precedence over sub-folders, i.e. folders checked last.
-// --out (-o): Output directory. Optional. When none specified, output in spritesheets folder.
-// --keepworking (-k): Optional Number. Amount of pngs to process in this folder. Stop when at amount or when run out. Default int_max.
-// --useconfig (-c): Bool. Use config file. has parameter 'dir': Directory to config. Otherwise, looks for 'config.txt (.json?)' in current folder.
-
-// config file:
-// can provide a set of directories and/or files to process.
-// each directory has a -k (optional, default 1).
-// each directory or file has an -o (required)
-// each would create the options struct and call the routine.

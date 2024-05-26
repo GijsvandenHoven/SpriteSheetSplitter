@@ -34,10 +34,14 @@ void Splitter::work(std::vector <SplitterOpts> &jobs) {
         }
 
         if (job.isPNGInDirectory) {
+            std::cout << logger::info << "Begin working on file \"" << job.inDirectory << "\"with " << job;
+
             std::string& onlyFile = pngQueue.front();
             split(onlyFile, jobStats, std::cout);
             pngQueue.pop();
         } else {
+            std::cout << logger::info << "Begin working on folder \"" << job.inDirectory << "\" with " << job;
+
             workFolder(job.workAmount, pngQueue, jobStats);
         }
 
@@ -90,7 +94,7 @@ void Splitter::workFolder(int workCap, std::queue<std::string> &pngs, SpriteSpli
  * Automatically detects the SpriteSheet type (if any).
  * Does not split fully invisible (alpha 0 on every pixel) objects or chars. Chars with only some invisible frames are OK.
  *
- * Automatically determines the name of a folder based on the SpriteSheet name, unless (todo specified otherwise)
+ * Automatically determines the name of a folder based on the SpriteSheet name.
  *
  * @param fileDirectory A path to a .png SpriteSheet file.
  * @param outStream stream for printing characters. Normally std::cout, but could be std::osyncstream from threading.

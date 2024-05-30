@@ -45,7 +45,7 @@ int main(int argc, char* argv[]) {
             {"out",         optional_argument,  nullptr, 'o'},
             {"groundPattern", optional_argument, nullptr, 'g'},
             {"keepworking", optional_argument,  nullptr, 'k'},
-            {"useconfig",   optional_argument,  nullptr, 'c'},
+            {"config",   optional_argument,  nullptr, 'c'},
             {"singleFolderOutput", no_argument, nullptr, 's'},
             {"subtractAlphaFromIndex", no_argument, nullptr, 'a'},
             {"help",        no_argument,        nullptr, 'h'},
@@ -257,7 +257,7 @@ void parseSingleParameter(int c, SplitterOpts& options) {
             std::cout << "                           " << "Defaults to process the entire folder unless specified otherwise.\n";
             std::cout << "                           " << "When a k is specified, this amount of files are processed before halting.\n";
             std::cout << "                           " << "To process specific files in a folder only, use --config.\n";
-            std::cout << "--useconfig (-c):          " << "Use a config file instead of command line options.\n";
+            std::cout << "--config (-c):          " << "Use a config file instead of command line options.\n";
             std::cout << "                           " << "Expects either a 'config.json' in the same directory,\n";
             std::cout << "                           " << "or a parameter specifying the config directory.\n";
             std::cout << "--groundPattern (-g):      " << "String representing an ECMAScript RegEx literal.\n";

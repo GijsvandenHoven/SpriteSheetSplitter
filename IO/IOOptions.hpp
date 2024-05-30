@@ -23,6 +23,7 @@ struct IOOptions {
     explicit IOOptions(const SplitterOpts & splitterOpts)
         :   inDirectory(std::filesystem::path(splitterOpts.inDirectory).make_preferred()),
             outDirectory(std::filesystem::path(splitterOpts.outDirectory).make_preferred()),
+            groundIndexOffset(splitterOpts.groundIndexOffset.second),
             subtractAlphaFromIndex(splitterOpts.subtractAlphaSpritesFromIndex),
             useSubFolders(splitterOpts.useSubFoldersInOutput) {}
 
@@ -33,6 +34,7 @@ struct IOOptions {
     std::filesystem::path inDirectory;
     std::filesystem::path outDirectory;
     std::set<SpriteSheetType> IOUsed; // used during splitting by SpriteSheetIO for single-folder mode, to warn about file overwrites. (e.g. double write of '0.png')
+    int groundIndexOffset;
     bool subtractAlphaFromIndex;
     bool useSubFolders;
 

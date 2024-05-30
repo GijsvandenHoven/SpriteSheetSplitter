@@ -22,7 +22,7 @@ std::string& getHELP_STRING() {
 
 // used by getopt, getopt_long etc. each character is the short name of an option. Colon after means it has a parameter. Double colon means optional parameter.
 std::string& getOPT_STR() {
-    static std::string OPT_STR = "hrsda:i:o::g::k::c::";
+    static std::string OPT_STR = "hrsda:i:u:o::g::k::c::";
     return OPT_STR;
 }
 
@@ -40,6 +40,7 @@ int main(int argc, char* argv[]) {
     static struct option long_options[] = {
             {"directory",   required_argument,  nullptr, 'd'},
             {"in",          required_argument,  nullptr, 'i'}, // equivalent to -d
+            {"groundIndexOffset", optional_argument, nullptr, 'u'},
             {"recursive",   no_argument,        nullptr, 'r'},
             {"out",         optional_argument,  nullptr, 'o'},
             {"groundPattern", optional_argument, nullptr, 'g'},
@@ -187,6 +188,16 @@ void parseSingleParameter(int c, SplitterOpts& options) {
             }
             break;
         }
+        case 'u': {
+            if (optarg == nullptr) {
+                std::cout << logger::error << "-u used without parameter: A number is required.\n";
+                exit(-1);
+            }
+            int amount = std::stoi(optarg);
+            options.groundIndexOffset.first = true;
+            options.groundIndexOffset.second = amount;
+            break;
+        }
         case 'k': {
             if (optarg == nullptr) {
                 std::cout << logger::info << "-k has no amount supplied: The entire directory will be processed.\n";
@@ -253,6 +264,7 @@ void parseSingleParameter(int c, SplitterOpts& options) {
             std::cout << "                           " << "When a sprite sheet matches the RegEx, it is processed as a ground file.\n";
             std::cout << "                           " << "This is necessary because Object and Ground sheets are indistinguishable\n";
             std::cout << "                           " << "By dimensions. When unspecified, the default value used is '/ground/i'.\n";
+            std::cout << "--groundIndexOffset (-u):  " << "Offset to add to the naming of ground sprites. Default is 0 or 1000, depending on -s.\n";
             std::cout << "--help (-h):               " << "Display this message\n";
 
             // assume the user either wants to use the program, or get information on commands. Not at the same time!
@@ -285,6 +297,13 @@ bool validateOptions(SplitterOpts& options) {
     if (options.outDirectory.empty()) { // default to indirectory when not specified.
         std::cout << logger::warn << "No output directory given, using input directory as output.\n";
         options.outDirectory = options.inDirectory;
+    }
+
+    if (options.groundIndexOffset.first == false) { // default must be used as it was not set by the user.
+        int value = options.useSubFoldersInOutput ? 0 : 1000;
+        std::cout << logger::warn << "Inferring default groundIndexOffset of " << value <<"\n";
+        options.groundIndexOffset.first = true;
+        options.groundIndexOffset.second = value;
     }
 
     if (!options.isPNGInDirectory && options.workAmount == 0) {

@@ -355,11 +355,13 @@ void SpriteSheetIO::saveGroundSplits(SpriteSplittingData &ssd, const std::string
         } else {
             // subtract from the index the amount of alpha sprites we ignored, if this indexing method is user specified.
             int index = i - (IOOpts_.subtractAlphaFromIndex ? skippedSprites : 0);
-            // We want to add a hardcoded 1000 to the index if we are outputting ground to a single folder.
+            // We may want to add to the index if we are outputting ground to a single folder.
+            // The offset is specified by options. Default is '1000' in single folder mode, '0' otherwise.
+            // Users are allowed to overwrite this value to something custom, even zero if they do not care for the risk.
             // The reason for this is that object sprites are also saved as '{index}.png', thus risking overwriting.
             // This is only necessary if multiple sheets inhabit the same folder.
             // Writing multiple sheets of the same type into the same folder is allowed but warned against in this::saveSplits().
-            index += (IOOpts_.useSubFolders ? 0 : 1000);
+            index += IOOpts_.groundIndexOffset;
             // NOTE: We call 'saveObjectSprite' intentionally. The method of saving is indistinguishable from objects (The Exalt Special).
             // We only need to take care to expand the spriteSize parameter for The Exalt Special. The square of this number is used by lodepng.
             bool error = saveObjectSprite(sprite, index, ssd.spriteSize + 2, ssd.lodeState, folderName, outStream);

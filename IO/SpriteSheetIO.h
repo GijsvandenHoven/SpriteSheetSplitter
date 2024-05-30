@@ -20,26 +20,28 @@ class SpriteSheetIO {
 public:
     SpriteSheetIO() = default;
     ~SpriteSheetIO();
-    bool setInPath(const std::string& pathName, bool shouldBePNG, bool recursive);
-    bool setOutPath(const std::string& pathName);
-    void setIOOptions(const IOOptions & opts);
+    void setIOOptions(const SplitterOpts &opts);
     void fillPNGQueue(std::queue<std::string>& q);
     static unsigned int loadPNG(const std::string& fileName, std::vector<unsigned char> &buffer, SpriteSheetPNGData& data);
-    void saveSplits(SpriteSplittingData& ssd, std::basic_ostream<char>& outStream) const;
+    void saveSplits(SpriteSplittingData& ssd, std::basic_ostream<char>& outStream);
+    [[nodiscard]] inline bool validOptions() const { return optionsOK_; }
 
 private:
-    fs::path inFilePath_;
-    fs::path outFilePath_;
     IOOptions IOOpts_;
     ignorant_directory_iterator* directoryIterator_ = nullptr;
+    bool optionsOK_ = false; // is written to by setIOOptions.
+
+    [[nodiscard]] bool initializeDirectoryIterator(bool shouldBePNG, bool recursive);
+    [[nodiscard]] bool initializeOutPath();
     [[nodiscard]] bool createCleanDirectory(const std::string& dir, std::error_code& ec) const noexcept;
     void saveObjectSplits(SpriteSplittingData &ssd, const std::string &folderName, std::basic_ostream<char>& outStream) const;
     void saveCharSplits(SpriteSplittingData& ssd, const std::string& folderName, std::basic_ostream<char>& outStream) const;
+    void saveGroundSplits(SpriteSplittingData& ssd, const std::string& folderName, std::basic_ostream<char>& outStream) const;
     bool saveObjectSprite(const unsigned char* sprite, int index, unsigned int spriteSize, lodepng::State& lodeState, const std::string& folderName, std::basic_ostream<char>& outStream) const;
     unsigned int saveCharSprites(unsigned char* sprites [SPRITES_PER_CHAR], int index, unsigned int spriteSize, lodepng::State& lodeState, const std::string& folderName, std::basic_ostream<char>& outStream) const;
     static void checkLodePNGErrorCode(unsigned int code, std::basic_ostream<char>& outStream);
     static bool charSpritesAreAlpha(unsigned char* sprites [SPRITES_PER_CHAR], unsigned int spriteSize, const unsigned char* elongatedSprite);
-    static std::string folderNameFromSheetName(const std::string& sheetPath, const SpriteSheetType& type);
+    static std::string folderNameFromSheetName(const std::string &sheetPath, const SpriteSheetType &type);
 };
 
 /**

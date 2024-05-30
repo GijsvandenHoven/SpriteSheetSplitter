@@ -13,15 +13,17 @@ void Splitter::work(std::vector <SplitterOpts> &jobs) {
 
     int jobCounter = 0;
     for (auto& job : jobs) {
-        // todo: to really push the concurrency, any job could be its own process.
-        bool inPathOK = ssio.setInPath(job.inDirectory, job.isPNGInDirectory, job.recursive);
-        bool outPathOK = ssio.setOutPath(job.outDirectory);
-        ssio.setIOOptions(IOOptions(job));
-        // only work the job if the input is OK. The only input error that can happen from now on is a png decode error or malformed SpriteSheet.
-        if (! (inPathOK && outPathOK)) {
-            std::cout << logger::error << "Something went wrong with setting the in or out path for this job. Please check the program output.\n";
-            std::cout << "\tIn path provided:\t" << job.inDirectory << "\n";
-            std::cout << "\tOut path provided:\t" << job.outDirectory << "\n";
+        // NOTE: to really push the concurrency, any job could be its own process.
+        // It looks like this won't be necessary due to performance at this time.
+
+        // Scatter the relevant options to Splitter and SpriteSheetIO
+        ground_matcher = job.groundFilePattern.get();
+        ssio.setIOOptions(job);
+
+        // If the IO cannot work with this (most likely the file paths were bad), skip the job.
+        if (! ssio.validOptions()) {
+            std::cout << logger::error << "This job has invalid IO settings\n";
+            std::cout << logger::error << "This job will be skipped.\n";
             continue;
         }
 
@@ -29,8 +31,10 @@ void Splitter::work(std::vector <SplitterOpts> &jobs) {
         ssio.fillPNGQueue(pngQueue);
 
         if (pngQueue.empty()) {
-            std::cout << logger::warn << "Zero png files were found from the input directory:";
+            std::cout << logger::error << "Zero '.png' files were found in input path:";
             std::cout << "\n\t\t" << job.inDirectory << "\n";
+            std::cout << logger::error << "This job will be skipped.\n";
+            continue;
         }
 
         if (job.isPNGInDirectory) {
@@ -46,9 +50,14 @@ void Splitter::work(std::vector <SplitterOpts> &jobs) {
         }
 
         std::cout << logger::info << "DONE with job " << ++jobCounter << " out of " << jobs.size() << "\n";
+
+        // assert PNG Queue is empty.
+        if (! pngQueue.empty()) {
+            throw std::logic_error("End of job reached but PNG queue not empty.");
+        }
     }
 
-    std::cout << jobStats;
+    std::cout << logger::info << "COMPLETED all pending jobs. " << jobStats;
 }
 
 /**
@@ -60,7 +69,7 @@ void Splitter::work(std::vector <SplitterOpts> &jobs) {
  * @param pngs the queue of FilePaths to SpriteSheets
  * @param jobStats stat tracking object
  */
-void Splitter::workFolder(int workCap, std::queue<std::string> &pngs, SpriteSplittingStatus &jobStats) const {
+void Splitter::workFolder(int workCap, std::queue<std::string> &pngs, SpriteSplittingStatus &jobStats) {
     const int work = std::min(workCap, static_cast<int>(pngs.size()));
 
     SimpleTimer folder("Splitting this folder");
@@ -100,8 +109,9 @@ void Splitter::workFolder(int workCap, std::queue<std::string> &pngs, SpriteSpli
  * @param outStream stream for printing characters. Normally std::cout, but could be std::osyncstream from threading.
  * @param jobStats struct for counting stats of splitting.
  */
-void Splitter::split(const std::string &fileDirectory, SpriteSplittingStatus &jobStats, std::basic_ostream<char> &outStream) const {
-    SimpleTimer timer {"Splitting this file", outStream};
+void Splitter::split(const std::string &fileDirectory, SpriteSplittingStatus &jobStats, std::basic_ostream<char> &outStream) {
+    const std::string& fileName = fs::path(fileDirectory).filename().string();
+    SimpleTimer timer {std::string("Splitting ") + fileName, outStream};
     std::vector<unsigned char> img;
     SpriteSheetPNGData pngData;
 
@@ -115,11 +125,13 @@ void Splitter::split(const std::string &fileDirectory, SpriteSplittingStatus &jo
         return;
     }
 
-    // Note to self: for types that are not discernible from sheet dimensions alone, this info could be supplied as optional parameter or function overload (latter needs loading routine above moved to dedicated function).
-    // Then transform this into something where the default branch is this code, and supplied parameter simply set the type after calling validSpriteSheet of some dimension.
     SpriteSheetType type;
     if (validSpriteSheet(pngData.width, pngData.height, OBJ_SHEET_ROW)) {
-        type = SpriteSheetType::OBJECT;
+        // ground and object sheets are indistinguishable from dimensions alone.
+        // One must be assumed, and the other has to be deduced by some rules. e.g. configured pattern matching.
+        bool isGround = std::regex_search(fileName, ground_matcher);
+
+        type = isGround ? SpriteSheetType::GROUND :  SpriteSheetType::OBJECT;
     } else if (validSpriteSheet(pngData.width, pngData.height, CHAR_SHEET_ROW)) {
         type = SpriteSheetType::CHARACTER;
     } else {
@@ -140,6 +152,10 @@ void Splitter::split(const std::string &fileDirectory, SpriteSplittingStatus &jo
 
     switch(type) {
         case SpriteSheetType::OBJECT:
+        case SpriteSheetType::GROUND:
+            // these two are exactly the same in splitting, only the way the split is saved is different.
+            // Namely, ground gets an apron of alpha around the split data.
+            // This insertion is part of the saving routine, handled by SpriteSheetIO.
             spriteSize = pngData.width / OBJ_SHEET_ROW;
             spriteCount = (img.size() / 4) / (spriteSize * spriteSize);
             // assign the correct function
@@ -154,8 +170,9 @@ void Splitter::split(const std::string &fileDirectory, SpriteSplittingStatus &jo
             splitFunction = Splitter::splitCharSheet;
             break;
         default: // did you add a new type to the enum?
-            outStream << logger::error << "unknown SpriteSheetType" << type << "\n";
-            exit(-1);
+            std::stringstream ss; // easiest way to stringify SpriteSheetType. We're crashing anwyway, performance loss is whatever.
+            ss << "unknown SpriteSheetType: " << type << "\n";
+            throw std::logic_error(ss.str());
     }
 
     // rows per sprite * amount of sprites that fit on the sheet
@@ -246,7 +263,7 @@ void Splitter::splitCharSheet(SpriteSplittingData& ssd) {
  * @param height height of the png
  * @param columnCount amount of columns in the png
  * @return whether or not it is a valid SpriteSheetData.
- */
+ */ // static
 bool Splitter::validSpriteSheet(unsigned int width, unsigned int height, unsigned int columnCount) {
     // columns are equally sized?
     float columnSize = static_cast<float>(width) / static_cast<float>(columnCount);

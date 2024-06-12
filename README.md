@@ -1,5 +1,5 @@
 # SpriteSheetSplitter
-Automate the crust away
+Automate the crust away; Compatability tool between legacy Sprite Sheets and modern singular sprite files.
 
 ## What
 Splits traditional sprite sheets into singular files as required by RotMG: Exalt.

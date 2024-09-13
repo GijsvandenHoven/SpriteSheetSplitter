@@ -11,13 +11,14 @@ struct SplitterOpts {
     std::string outDirectory;
     RegexWrapper groundFilePattern;
     int workAmount;
+    std::pair<bool,int> groundIndexOffset; // user specified, value
     bool isPNGInDirectory;
     bool recursive;
     bool useSubFoldersInOutput;
     bool subtractAlphaSpritesFromIndex;
 
     SplitterOpts()
-        :   groundFilePattern(RegexWrapper("/ground/i")), workAmount(0), isPNGInDirectory(false),
+        :   groundFilePattern(RegexWrapper("/ground/i")), workAmount(0), groundIndexOffset(std::make_pair(false, 0)), isPNGInDirectory(false),
             recursive(false), useSubFoldersInOutput(true),
             subtractAlphaSpritesFromIndex(false) {}
 
@@ -33,6 +34,7 @@ inline std::ostream&operator<<(std::ostream &o, const SplitterOpts& s) {
     o << "\tinDir: " << s.inDirectory << "\n";
     o << "\toutDir: " << s.outDirectory << "\n";
     o << "\tgroundFilePattern: " << s.groundFilePattern << "\n";
+    o << "\tgroundSpriteOffset: " << s.groundIndexOffset.second << "\n";
     o << "\tworkAmount: " << (s.workAmount == std::numeric_limits<int>::max() ? "infinite" : std::to_string(s.workAmount)) << "\n";
     o << "\tisPathToPNG?: " << (s.isPNGInDirectory ? "true" : "false") << "\n";
     o << "\trecursive?: " << (s.recursive ? "true" : "false") << "\n";

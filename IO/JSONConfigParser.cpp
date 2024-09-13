@@ -30,6 +30,7 @@ struct SplitterOptsArray {
  */
 struct SplitterOptsComplexTypeHandler {
     std::string groundFilePattern;
+    int groundIndexOffset;
 };
 
 /** Because the config is an array of jobs, the handler has to follow the same convention. */
@@ -64,6 +65,7 @@ void registerJSONMappings() {
 
     // groundFilePattern shall be handled in two steps: Extract the string, then manually insert the wrapper.
     sm::reg(&SplitterOptsComplexTypeHandler::groundFilePattern, "groundFilePattern", sm::Default{"/ground/i"});
+    sm::reg(&SplitterOptsComplexTypeHandler::groundIndexOffset, "groundIndexOffset", sm::Default(-1));
 }
 
 /**
@@ -104,6 +106,8 @@ void JSONConfigParser::parseConfig(const std::string &pathToFile, std::vector<Sp
     for (size_t index = 0; index < soa.jobs.size(); ++index) {
         soa.jobs[index].groundFilePattern = RegexWrapper(socta.jobs[index].groundFilePattern);
         soa.jobs[index].setIsPNGDirectory();
+        int goi = socta.jobs[index].groundIndexOffset;
+        soa.jobs[index].groundIndexOffset = std::make_pair(goi != -1, goi);
     }
 
     work = std::move(soa.jobs);

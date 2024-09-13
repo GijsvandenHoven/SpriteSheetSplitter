@@ -20,4 +20,3 @@ add_executable(SpriteSheetSplitter ${SOURCES})
 target_include_directories(SpriteSheetSplitter PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/libraries/struct_mapping")
 
 target_link_libraries(SpriteSheetSplitter PRIVATE lodepng OpenMP::OpenMP_CXX)
-target_link_options(SpriteSheetSplitter PRIVATE -static-libgcc -static-libstdc++)
